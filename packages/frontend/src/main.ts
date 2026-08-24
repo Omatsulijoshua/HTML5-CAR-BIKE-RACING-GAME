@@ -16,7 +16,6 @@ if (statusText) {
   socket.on("connect", () => {
     statusText.textContent = `ONLINE`;
     statusText.style.color = "#39ff14";
-    // Ask for list of rooms immediately on connect
     socket.emit(SocketEvent.GET_ROOMS);
   });
 
@@ -39,33 +38,88 @@ let isHost = false;
 // 3. Tab Switching Layouts
 const tabCareerBtn = document.getElementById("tab-career-btn")!;
 const tabMultiplayerBtn = document.getElementById("tab-multiplayer-btn")!;
+const tabSettingsBtn = document.getElementById("tab-settings-btn")!;
+
 const careerTabContent = document.getElementById("career-tab-content")!;
 const multiplayerTabContent = document.getElementById("multiplayer-tab-content")!;
+const settingsTabContent = document.getElementById("settings-tab-content")!;
+
+function deactivateAllTabs(): void {
+  [tabCareerBtn, tabMultiplayerBtn, tabSettingsBtn].forEach((btn) => {
+    btn.style.color = "#888";
+    btn.style.borderBottom = "none";
+  });
+  [careerTabContent, multiplayerTabContent, settingsTabContent].forEach((content) => {
+    content.style.display = "none";
+  });
+}
 
 tabCareerBtn.addEventListener("click", () => {
+  deactivateAllTabs();
   tabCareerBtn.style.color = "#ff3b30";
   tabCareerBtn.style.borderBottom = "3px solid #ff3b30";
-  tabMultiplayerBtn.style.color = "#888";
-  tabMultiplayerBtn.style.borderBottom = "none";
-
   careerTabContent.style.display = "block";
-  multiplayerTabContent.style.display = "none";
 });
 
 tabMultiplayerBtn.addEventListener("click", () => {
+  deactivateAllTabs();
   tabMultiplayerBtn.style.color = "#ff3b30";
   tabMultiplayerBtn.style.borderBottom = "3px solid #ff3b30";
-  tabCareerBtn.style.color = "#888";
-  tabCareerBtn.style.borderBottom = "none";
-
   multiplayerTabContent.style.display = "block";
-  careerTabContent.style.display = "none";
-
-  // Query lobbies list when entering tab
   socket.emit(SocketEvent.GET_ROOMS);
 });
 
-// 4. Update Profile & Career Stage Dashboard
+tabSettingsBtn.addEventListener("click", () => {
+  deactivateAllTabs();
+  tabSettingsBtn.style.color = "#ff3b30";
+  tabSettingsBtn.style.borderBottom = "3px solid #ff3b30";
+  settingsTabContent.style.display = "block";
+  loadSettingsUI();
+});
+
+// 4. Settings Interface Handlers
+const settingGraphics = document.getElementById("setting-graphics") as HTMLSelectElement;
+const settingSensitivity = document.getElementById("setting-sensitivity") as HTMLInputElement;
+const sensitivityValue = document.getElementById("sensitivity-value")!;
+
+function loadSettingsUI(): void {
+  const profile = SaveSystem.loadProfile();
+  
+  if (settingGraphics) {
+    settingGraphics.value = profile.graphicsQuality || "high";
+  }
+  
+  if (settingSensitivity) {
+    const val = profile.steeringSensitivity !== undefined ? profile.steeringSensitivity : 1.0;
+    settingSensitivity.value = val.toString();
+    if (sensitivityValue) {
+      sensitivityValue.textContent = `${val.toFixed(1)}x`;
+    }
+  }
+}
+
+if (settingGraphics) {
+  settingGraphics.addEventListener("change", () => {
+    const profile = SaveSystem.loadProfile();
+    profile.graphicsQuality = settingGraphics.value as "high" | "low";
+    SaveSystem.saveProfile(profile);
+    console.log(`Graphics Quality updated to: ${profile.graphicsQuality}`);
+  });
+}
+
+if (settingSensitivity) {
+  settingSensitivity.addEventListener("input", () => {
+    const val = parseFloat(settingSensitivity.value);
+    if (sensitivityValue) {
+      sensitivityValue.textContent = `${val.toFixed(1)}x`;
+    }
+    const profile = SaveSystem.loadProfile();
+    profile.steeringSensitivity = val;
+    SaveSystem.saveProfile(profile);
+  });
+}
+
+// 5. Update Profile & Career Stage Dashboard
 function refreshMenuDashboard(): void {
   const profile = SaveSystem.loadProfile();
   
@@ -82,7 +136,6 @@ function refreshMenuDashboard(): void {
     xpBar.style.width = `${ratio}%`;
   }
 
-  // Set default username value in inputs if not changed
   const usernameInput = document.getElementById("player-username") as HTMLInputElement;
   if (usernameInput && usernameInput.value === "Guest Racer") {
     usernameInput.value = profile.username;
@@ -143,7 +196,7 @@ function refreshMenuDashboard(): void {
   }
 }
 
-// 5. Start Single-Player Race
+// 6. Start Single-Player Race
 function startRace(stage: CareerStageConfig): void {
   const menuCard = document.getElementById("menu-card");
   if (menuCard) menuCard.style.display = "none";
@@ -161,6 +214,27 @@ function startRace(stage: CareerStageConfig): void {
     const hud = document.getElementById("hud");
     if (hud) hud.style.display = "none";
     
+    // Draw detailed standings row table
+    const rowsContainer = document.getElementById("results-standings-rows")!;
+    if (rowsContainer) {
+      rowsContainer.innerHTML = "";
+      results.standingsList.forEach((entry, idx) => {
+        const row = document.createElement("tr");
+        row.style.borderBottom = "1px solid rgba(255,255,255,0.06)";
+        if (entry.isPlayer) {
+          row.style.color = "#39ff14";
+          row.style.fontWeight = "bold";
+        }
+        row.innerHTML = `
+          <td style="padding: 6px 4px;">${idx + 1}</td>
+          <td style="padding: 6px 4px;">${entry.name}</td>
+          <td style="padding: 6px 4px; text-transform: uppercase;">${entry.vehicleName}</td>
+          <td style="padding: 6px 4px; text-align: right;">${entry.finishTime.toFixed(2)}s</td>
+        `;
+        rowsContainer.appendChild(row);
+      });
+    }
+
     const popup = document.getElementById("results-popup");
     const header = document.getElementById("results-header");
     const coinsTxt = document.getElementById("reward-coins");
@@ -173,7 +247,8 @@ function startRace(stage: CareerStageConfig): void {
         header.textContent = "1st PLACE!";
         header.style.color = "#39ff14";
       } else {
-        header.textContent = `${results.standing}th Place`;
+        const suffix = results.standing === 2 ? "2nd" : results.standing === 3 ? "3rd" : `${results.standing}th`;
+        header.textContent = `${suffix} Place`;
         header.style.color = "#ffcc00";
       }
     }
@@ -199,7 +274,7 @@ if (backToMenuBtn) {
   });
 }
 
-// 6. Multiplayer Lobbies Client Emitters
+// 7. Multiplayer Lobbies Client Emitters
 const usernameInput = document.getElementById("player-username") as HTMLInputElement;
 const createRoomBtn = document.getElementById("create-room-btn")!;
 
@@ -207,7 +282,6 @@ createRoomBtn.addEventListener("click", () => {
   const username = usernameInput?.value.trim() || "Guest Racer";
   console.log(`Requesting room creation for: ${username}`);
   
-  // Save username chosen
   const profile = SaveSystem.loadProfile();
   profile.username = username;
   SaveSystem.saveProfile(profile);
@@ -215,7 +289,7 @@ createRoomBtn.addEventListener("click", () => {
   socket.emit(SocketEvent.CREATE_ROOM, { username });
 });
 
-// 7. Sockets Room Event Receivers
+// 8. Sockets Room Event Receivers
 socket.on(SocketEvent.ROOMS_LIST, (data: { rooms: RoomInfo[] }) => {
   const listContainer = document.getElementById("lobbies-list");
   if (!listContainer) return;
@@ -274,7 +348,6 @@ socket.on(SocketEvent.ROOMS_LIST, (data: { rooms: RoomInfo[] }) => {
 
 socket.on(SocketEvent.ROOM_CREATED, (data: { roomId: string; hostId: string; players: any[] }) => {
   isHost = true;
-
   showLobby(data.roomId, data.players);
 });
 
@@ -285,7 +358,6 @@ socket.on(SocketEvent.ROOM_JOINED, (data: { success: boolean; error?: string; ro
   }
 
   isHost = (socket.id === data.hostId);
-
   showLobby(data.roomId!, data.players!);
 });
 
@@ -309,19 +381,15 @@ socket.on(SocketEvent.ROOM_CLOSED, () => {
   exitLobbyUI();
 });
 
-// 8. Lobby UI helpers
+// 9. Lobby UI helpers
 function showLobby(roomId: string, players: any[]): void {
-  // Hide menu selection
   document.getElementById("menu-card")!.style.display = "none";
   
-  // Show lobby room card
   const lobbyCard = document.getElementById("room-lobby-card")!;
   lobbyCard.style.display = "block";
 
-  // Set roomId label
   document.getElementById("lobby-room-id")!.textContent = roomId;
 
-  // Toggle Start button visibility based on Host permissions
   const startBtn = document.getElementById("lobby-start-btn")!;
   const readyBtn = document.getElementById("lobby-ready-btn")!;
 
@@ -346,7 +414,7 @@ function updatePlayersLobbyList(players: any[]): void {
 
   players.forEach((player) => {
     const isLocal = player.id === socket.id;
-    const isPlayerHost = player.id === players[0].id; // First player in list is Host
+    const isPlayerHost = player.id === players[0].id;
 
     const row = document.createElement("div");
     row.style.display = "flex";
@@ -383,7 +451,6 @@ function updatePlayersLobbyList(players: any[]): void {
     container.appendChild(row);
   });
 
-  // Enable Start Match for Host if all other players are ready
   if (isHost && players.length > 1) {
     const startBtn = document.getElementById("lobby-start-btn") as HTMLButtonElement;
     if (startBtn) {
@@ -401,7 +468,7 @@ function exitLobbyUI(): void {
   refreshMenuDashboard();
 }
 
-// 9. Match Lobby Button Click Handlers
+// 10. Match Lobby Button Click Handlers
 const readyBtn = document.getElementById("lobby-ready-btn")!;
 const leaveBtn = document.getElementById("lobby-leave-btn")!;
 const startBtn = document.getElementById("lobby-start-btn")!;
@@ -409,7 +476,6 @@ const startBtn = document.getElementById("lobby-start-btn")!;
 readyBtn.addEventListener("click", () => {
   socket.emit(SocketEvent.READY);
   
-  // Toggle ready button visual styling instantly for responsiveness
   if (readyBtn.textContent === "READY") {
     readyBtn.textContent = "CANCEL READY";
     readyBtn.style.background = "#ff3b30";
@@ -424,15 +490,10 @@ leaveBtn.addEventListener("click", () => {
   exitLobbyUI();
 });
 
-// Start race triggers free-play mock arcade for testing room integration
 startBtn.addEventListener("click", () => {
   if (isHost) {
     console.log("Host triggered match start. Booting track circuit...");
-    
-    // Hide room lobbies
     document.getElementById("room-lobby-card")!.style.display = "none";
-    
-    // Load track 1 configuration (Stage 1 stats)
     startRace(CAREER_STAGES[0]);
   }
 });

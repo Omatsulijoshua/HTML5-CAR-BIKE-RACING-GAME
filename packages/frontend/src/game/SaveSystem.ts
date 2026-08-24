@@ -6,6 +6,8 @@ export interface UserProfileData {
   unlockedVehicles: string[];
   completedStages: string[];
   bestTimes: Record<string, number>;
+  graphicsQuality: "high" | "low";
+  steeringSensitivity: number;
 }
 
 const SAVE_KEY = "racing_game_save";
@@ -22,6 +24,8 @@ export class SaveSystem {
         unlockedVehicles: ["starter_car", "starter_bike"],
         completedStages: [],
         bestTimes: {},
+        graphicsQuality: "high",
+        steeringSensitivity: 1.0,
       };
       this.saveProfile(defaultProfile);
       return defaultProfile;
@@ -32,6 +36,8 @@ export class SaveSystem {
       if (!profile.unlockedVehicles) profile.unlockedVehicles = ["starter_car", "starter_bike"];
       if (!profile.completedStages) profile.completedStages = [];
       if (!profile.bestTimes) profile.bestTimes = {};
+      if (!profile.graphicsQuality) profile.graphicsQuality = "high";
+      if (profile.steeringSensitivity === undefined) profile.steeringSensitivity = 1.0;
       return profile;
     } catch {
       localStorage.removeItem(SAVE_KEY);

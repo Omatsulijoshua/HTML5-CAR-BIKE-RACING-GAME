@@ -1,12 +1,14 @@
 import * as THREE from "three";
 import { VehicleConfig } from "@racing-game/shared";
 import { Track } from "./Track";
+import { SaveSystem } from "./SaveSystem";
 
 export abstract class Vehicle {
   public mesh: THREE.Group;
   public config: VehicleConfig;
   public driverName: string = "Player";
   public isFinished: boolean = false;
+  public finishTime: number = 0;
   
   // Kinematic state
   public position: THREE.Vector3 = new THREE.Vector3();
@@ -107,6 +109,11 @@ export abstract class Vehicle {
     this.isDrifting = inputs.drift && Math.abs(steerInput) > 0 && this.speed > 15;
 
     let steerPower = stats.handling;
+    if (this.driverName.includes("PLAYER")) {
+      const profile = SaveSystem.loadProfile();
+      steerPower *= (profile.steeringSensitivity !== undefined ? profile.steeringSensitivity : 1.0);
+    }
+
     if (this.isDrifting) {
       steerPower *= 1.5; // sharper turning during drifts
     }

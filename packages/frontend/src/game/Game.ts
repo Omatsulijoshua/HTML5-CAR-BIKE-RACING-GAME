@@ -8,6 +8,13 @@ import { AIController } from "./AIController";
 import { SaveSystem } from "./SaveSystem";
 import { DEFAULT_VEHICLES, CareerStageConfig } from "@racing-game/shared";
 
+export interface RaceStandingEntry {
+  name: string;
+  vehicleName: string;
+  finishTime: number;
+  isPlayer: boolean;
+}
+
 export class Game {
   private container: HTMLElement;
   private scene!: THREE.Scene;
@@ -34,7 +41,13 @@ export class Game {
 
   // Race Manager states
   private stageConfig: CareerStageConfig;
-  private onCompleteCallback: (results: { standing: number; coins: number; xp: number; levelUp: boolean }) => void;
+  private onCompleteCallback: (results: {
+    standing: number;
+    coins: number;
+    xp: number;
+    levelUp: boolean;
+    standingsList: RaceStandingEntry[];
+  }) => void;
   private raceStarted: boolean = false;
   private raceFinished: boolean = false;
   private raceTime: number = 0;
@@ -53,7 +66,13 @@ export class Game {
   constructor(
     container: HTMLElement,
     stageConfig: CareerStageConfig,
-    onCompleteCallback: (results: { standing: number; coins: number; xp: number; levelUp: boolean }) => void
+    onCompleteCallback: (results: {
+      standing: number;
+      coins: number;
+      xp: number;
+      levelUp: boolean;
+      standingsList: RaceStandingEntry[];
+    }) => void
   ) {
     this.container = container;
     this.stageConfig = stageConfig;
@@ -64,15 +83,20 @@ export class Game {
     this.initSceneObjects();
     this.initHUD();
     this.start();
+    this.runStartCountdown();
   }
 
   private initThree(): void {
-    // 1. Scene setup
+    // 1. Load Graphics Quality from SaveSystem settings
+    const profile = SaveSystem.loadProfile();
+    const isHighDetail = profile.graphicsQuality !== "low";
+
+    // 2. Scene setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0c10);
     this.scene.fog = new THREE.FogExp2(0x0a0c10, 0.015);
 
-    // 2. Camera setup
+    // 3. Camera setup
     this.camera = new THREE.PerspectiveCamera(
       70,
       window.innerWidth / window.innerHeight,
@@ -80,25 +104,25 @@ export class Game {
       1000
     );
 
-    // 3. Renderer setup
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // 4. Renderer setup (dynamically toggles antialiasing and shadows)
+    this.renderer = new THREE.WebGLRenderer({ antialias: isHighDetail });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = isHighDetail;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.container.appendChild(this.renderer.domElement);
 
-    // 4. Clock setup
+    // 5. Clock setup
     this.clock = new THREE.Clock();
 
-    // 5. Input manager
+    // 6. Input manager
     this.input = new Input();
 
-    // 6. Handle Window Resize
+    // 7. Handle Window Resize
     window.addEventListener("resize", this.onWindowResize.bind(this));
 
-    // 7. Swap Vehicle & Respawn Keyboard Listeners
+    // 8. Swap Vehicle & Respawn Keyboard Listeners
     window.addEventListener("keydown", this.onKeyDown.bind(this));
   }
 
@@ -109,9 +133,9 @@ export class Game {
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(40, 60, 20);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 2048;
-    dirLight.shadow.mapSize.height = 2048;
+    dirLight.castShadow = this.renderer.shadowMap.enabled;
+    dirLight.shadow.mapSize.width = 1024;
+    dirLight.shadow.mapSize.height = 1024;
     dirLight.shadow.camera.near = 0.5;
     dirLight.shadow.camera.far = 200;
     const d = 50;
@@ -132,7 +156,7 @@ export class Game {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.1;
-    ground.receiveShadow = true;
+    ground.receiveShadow = this.renderer.shadowMap.enabled;
     this.scene.add(ground);
 
     // 3. Track
@@ -217,9 +241,39 @@ export class Game {
     if (this.hudElement) {
       this.hudElement.style.display = "block";
     }
+  }
 
-    this.showBanner("3... 2... 1... GO!", 2.0);
-    this.raceStarted = true;
+  private runStartCountdown(): void {
+    this.raceStarted = false;
+
+    // Create a series of countdown numbers using CSS animated divs
+    const spawnNumber = (txt: string) => {
+      const el = document.createElement("div");
+      el.className = "countdown-number";
+      el.textContent = txt;
+      document.body.appendChild(el);
+      
+      // Remove element when zoom animation ends (1s duration)
+      setTimeout(() => {
+        el.remove();
+      }, 980);
+    };
+
+    // Sequence timeouts
+    // 0s: Flashes "3"
+    spawnNumber("3");
+
+    // 1s: Flashes "2"
+    setTimeout(() => spawnNumber("2"), 1000);
+
+    // 2s: Flashes "1"
+    setTimeout(() => spawnNumber("1"), 2000);
+
+    // 3s: Flashes "GO!" and unlocks vehicles throttle inputs
+    setTimeout(() => {
+      spawnNumber("GO!");
+      this.raceStarted = true;
+    }, 3000);
   }
 
   private showBanner(text: string, duration: number): void {
@@ -318,6 +372,32 @@ export class Game {
   }
 
   private updatePhysics(dt: number): void {
+    // 1. Maintain zero speed for all drivers during starting countdown
+    if (!this.raceStarted) {
+      this.activeVehicle.speed = 0;
+      this.activeVehicle.update(dt, {
+        accelerate: false,
+        brake: false,
+        steerLeft: false,
+        steerRight: false,
+        nitro: false,
+        drift: false,
+      });
+
+      this.allVehicles.forEach((veh) => {
+        veh.speed = 0;
+        veh.update(dt, {
+          accelerate: false,
+          brake: false,
+          steerLeft: false,
+          steerRight: false,
+          nitro: false,
+          drift: false,
+        });
+      });
+      return;
+    }
+
     this.track.updateObstacles(dt);
 
     // Drive AIs
@@ -401,22 +481,32 @@ export class Game {
 
       if (vehicle.currentLap > this.totalLaps) {
         vehicle.isFinished = true;
+        vehicle.finishTime = this.raceTime;
         
         if (vehicle === this.activeVehicle) {
           this.raceFinished = true;
           this.showBanner("FINISH!", 10.0);
 
-          // Calculate final standing
-          const getStandingScore = (veh: Vehicle) => {
-            const lapScore = veh.currentLap * 10000;
-            const checkpointScore = (veh.lastCheckpointIndex + 1) * 1000;
-            const nextCPIdx = (veh.lastCheckpointIndex + 1) % 5;
-            const nextCP = this.track.checkpoints[nextCPIdx];
-            const dist = nextCP ? veh.position.distanceTo(nextCP) : 0;
-            return lapScore + checkpointScore - dist;
-          };
-          const sorted = [...this.allVehicles].sort((a, b) => getStandingScore(b) - getStandingScore(a));
-          const standing = sorted.indexOf(this.activeVehicle) + 1;
+          // Force any unfinished AIs to also record their current time
+          this.allVehicles.forEach((veh) => {
+            if (!veh.isFinished) {
+              veh.isFinished = true;
+              // estimate final time slightly worse than player
+              veh.finishTime = this.raceTime + (5.0 - veh.lastCheckpointIndex * 0.8) + Math.random() * 2.0;
+            }
+          });
+
+          // Build complete standings array sorted ascending by finishTime
+          const sortedEntries: RaceStandingEntry[] = this.allVehicles
+            .map((veh) => ({
+              name: veh.driverName,
+              vehicleName: veh.config.name,
+              finishTime: veh.finishTime,
+              isPlayer: (veh === this.activeVehicle),
+            }))
+            .sort((a, b) => a.finishTime - b.finishTime);
+
+          const standing = sortedEntries.findIndex((e) => e.isPlayer) + 1;
 
           // Process rewards
           const coinsEarned = this.stageConfig.rewards.coins[standing] || 50;
@@ -424,20 +514,22 @@ export class Game {
           
           const results = SaveSystem.addRewards(coinsEarned, xpEarned);
 
-          // If 1st place, mark current stage completed to unlock next stage!
           if (standing === 1) {
             SaveSystem.unlockStage(this.stageConfig.id);
           }
 
-          // Transition back callback
+          // Return full list back in callback
           setTimeout(() => {
             this.onCompleteCallback({
               standing,
               coins: coinsEarned,
               xp: xpEarned,
               levelUp: results.levelUp,
+              standingsList: sortedEntries,
             });
           }, 2500);
+        } else {
+          console.log(`AI Opponent '${vehicle.driverName}' finished at ${this.raceTime.toFixed(2)}s`);
         }
       } else if (vehicle === this.activeVehicle) {
         this.showBanner(`LAP ${vehicle.currentLap}/${this.totalLaps}`, 1.8);
@@ -523,7 +615,7 @@ export class Game {
   }
 
   private updateHUD(dt: number): void {
-    // Standings calculation
+    // Standings score weights
     const getStandingScore = (veh: Vehicle) => {
       const lapScore = veh.currentLap * 10000;
       const checkpointScore = (veh.lastCheckpointIndex + 1) * 1000;

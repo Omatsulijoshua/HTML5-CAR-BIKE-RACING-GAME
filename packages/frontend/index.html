@@ -69,6 +69,29 @@
             background-color: #e02d22;
         }
         
+        /* Countdown zoom CSS Animation */
+        @keyframes count-zoom {
+            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+            30% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            70% { transform: translate(-50%, -50%) scale(1.0); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2.0); opacity: 0; }
+        }
+        .countdown-number {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: sans-serif;
+            font-size: 110px;
+            font-weight: 900;
+            color: #ff3b30;
+            text-shadow: 0 0 20px rgba(255, 59, 48, 0.8), 3px 3px 0 #000;
+            animation: count-zoom 1s ease-out forwards;
+            pointer-events: none;
+            z-index: 100;
+            text-transform: uppercase;
+        }
+
         /* Mobile Touch Controls Overlay */
         #mobile-controls {
             display: none;
@@ -150,6 +173,7 @@
             <div style="display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
                 <button id="tab-career-btn" style="flex: 1; padding: 12px; background: none; border: none; font-size: 15px; font-weight: bold; border-bottom: 3px solid #ff3b30; color: #ff3b30; border-radius: 0; cursor: pointer;">CAREER MODE</button>
                 <button id="tab-multiplayer-btn" style="flex: 1; padding: 12px; background: none; border: none; font-size: 15px; font-weight: bold; color: #888; border-radius: 0; cursor: pointer;">MULTIPLAYER</button>
+                <button id="tab-settings-btn" style="flex: 1; padding: 12px; background: none; border: none; font-size: 15px; font-weight: bold; color: #888; border-radius: 0; cursor: pointer;">SETTINGS</button>
             </div>
 
             <!-- Career Tab Content -->
@@ -180,6 +204,34 @@
                     <div style="color: #888; text-align: center; padding: 20px; font-style: italic;">No active match lobbies. Create one above!</div>
                 </div>
             </div>
+
+            <!-- Settings Tab Content -->
+            <div id="settings-tab-content" style="display: none; text-align: left; padding: 10px 20px;">
+                <p style="color: #ccc; font-size: 13px; margin-bottom: 25px;">Tune options for graphics optimization and vehicle controls layout!</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 6px; font-size: 14px; color: #fff;">GRAPHICS DETAIL LEVEL</label>
+                        <select id="setting-graphics" style="width: 100%; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; padding: 10px; color: #fff; font-weight: bold; font-size: 14px; cursor: pointer;">
+                            <option value="high">High (Dynamic Shadows + AA)</option>
+                            <option value="low">Low (Maximum Performance)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 6px; font-size: 14px; color: #fff;">
+                            <label>STEERING SENSITIVITY</label>
+                            <span id="sensitivity-value" style="color: #39ff14;">1.0x</span>
+                        </div>
+                        <input type="range" id="setting-sensitivity" min="0.5" max="2.0" step="0.1" value="1.0" style="width: 100%; accent-color: #ff3b30; cursor: pointer;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 4px;">
+                            <span>0.5x (Dampened)</span>
+                            <span>1.0x (Standard)</span>
+                            <span>2.0x (Hyper)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Room Lobby overlay card -->
@@ -206,20 +258,38 @@
         </div>
 
         <!-- Results Popup screen -->
-        <div id="results-popup" class="card interactive" style="display: none; padding: 30px; max-width: 450px; margin-top: auto; margin-bottom: auto;">
+        <div id="results-popup" class="card interactive" style="display: none; padding: 30px; max-width: 480px; margin-top: auto; margin-bottom: auto; width: 90%;">
             <h1 id="results-header" style="color: #39ff14; font-size: 38px; margin-bottom: 5px;">1st PLACE!</h1>
-            <p style="font-size: 14px; color: #aaa; text-transform: uppercase; margin-bottom: 25px;">Race Results</p>
+            <p style="font-size: 13px; color: #aaa; text-transform: uppercase; margin-bottom: 20px;">Race Results</p>
             
-            <div style="display: flex; flex-direction: column; gap: 15px; text-align: left; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 6px; margin-bottom: 25px; border: 1px dashed rgba(255,255,255,0.15);">
-                <div style="display: flex; justify-content: space-between; font-size: 16px;">
+            <!-- Detailed Standings List -->
+            <div style="font-weight: bold; font-size: 11px; color: #aaa; text-transform: uppercase; text-align: left; margin-bottom: 6px; letter-spacing: 0.5px;">Final Standings</div>
+            <div style="max-height: 150px; overflow-y: auto; margin-bottom: 20px; background: rgba(0,0,0,0.45); border-radius: 4px; border: 1px solid rgba(255,255,255,0.06); padding: 5px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; font-family: monospace;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.15); color: #888; text-transform: uppercase; font-size: 10px;">
+                            <th style="padding: 6px 4px; width: 40px;">Pos</th>
+                            <th style="padding: 6px 4px;">Driver</th>
+                            <th style="padding: 6px 4px;">Vehicle</th>
+                            <th style="padding: 6px 4px; text-align: right; width: 80px;">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-standings-rows" style="color: #ddd;">
+                        <!-- programmatically filled by main.ts -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; text-align: left; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px dashed rgba(255,255,255,0.15); font-size: 14px;">
+                <div style="display: flex; justify-content: space-between;">
                     <span>COINS EARNED:</span>
                     <span id="reward-coins" style="color: #ffcc00; font-weight: bold;">+300</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 16px;">
+                <div style="display: flex; justify-content: space-between;">
                     <span>XP GAINED:</span>
                     <span id="reward-xp" style="color: #39ff14; font-weight: bold;">+100</span>
                 </div>
-                <div id="levelup-alert" style="color: #ff2d55; font-weight: bold; text-align: center; display: none; font-size: 14px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; margin-top: 5px;">
+                <div id="levelup-alert" style="color: #ff2d55; font-weight: bold; text-align: center; display: none; font-size: 13px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; margin-top: 5px;">
                     🎉 LEVEL UP! NEXT LEVEL REACHED!
                 </div>
             </div>
