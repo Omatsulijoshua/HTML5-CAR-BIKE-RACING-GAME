@@ -30,10 +30,48 @@ if (statusText) {
 
 // Boot the 3D Game Engine
 const container = document.getElementById("canvas-container");
+let game: Game | null = null;
 
 if (container) {
-  const game = new Game(container);
+  game = new Game(container);
   (window as any).game = game;
+}
+
+// Bind Mobile Controls
+const isTouchDevice = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+if (isTouchDevice) {
+  const mobileUI = document.getElementById("mobile-controls");
+  if (mobileUI) {
+    mobileUI.style.display = "flex";
+  }
+
+  const bindTouch = (
+    btnId: string,
+    action: "accelerate" | "brake" | "steerLeft" | "steerRight" | "nitro" | "drift"
+  ) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        game?.input.setTouchInput(action, true);
+      }, { passive: false });
+      btn.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        game?.input.setTouchInput(action, false);
+      }, { passive: false });
+      btn.addEventListener("touchcancel", (e) => {
+        e.preventDefault();
+        game?.input.setTouchInput(action, false);
+      }, { passive: false });
+    }
+  };
+
+  bindTouch("btn-left", "steerLeft");
+  bindTouch("btn-right", "steerRight");
+  bindTouch("btn-gas", "accelerate");
+  bindTouch("btn-brake", "brake");
+  bindTouch("btn-nitro", "nitro");
+  bindTouch("btn-drift", "drift");
 }
 
 // Button actions

@@ -22,6 +22,10 @@ export class Game {
   private carInstance!: Car;
   private bikeInstance!: Bike;
 
+  // Camera shake state
+  private shakeIntensity: number = 0;
+  private shakeOffset: THREE.Vector3 = new THREE.Vector3();
+
   constructor(container: HTMLElement) {
     this.container = container;
     this.initThree();
@@ -174,6 +178,17 @@ export class Game {
       nitro: keys.nitro,
       drift: keys.drift,
     });
+
+    // Check collision shake triggers
+    if (this.activeVehicle.hasCollidedThisFrame) {
+      this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.7);
+      this.activeVehicle.hasCollidedThisFrame = false; // reset
+    }
+
+    // Continuous mild shake during boosts
+    if (this.activeVehicle.isNitroActive) {
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
+    }
   }
 
   private updateCamera(dt: number): void {
@@ -185,7 +200,7 @@ export class Game {
     this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 8 * dt);
     this.camera.updateProjectionMatrix();
 
-    // Smooth chase camera positioning
+    // Smooth chase camera positioning (lag/interpolation)
     const targetOffset = new THREE.Vector3(
       -Math.sin(this.activeVehicle.angle) * 8.5,
       4.0,
@@ -194,6 +209,17 @@ export class Game {
 
     const desiredCamPos = this.activeVehicle.position.clone().add(targetOffset);
     this.camera.position.lerp(desiredCamPos, 8 * dt);
+
+    // Apply procedural camera shake offset
+    this.shakeIntensity = Math.max(0, this.shakeIntensity - 3.5 * dt);
+    if (this.shakeIntensity > 0) {
+      this.shakeOffset.set(
+        (Math.random() - 0.5) * this.shakeIntensity * 0.7,
+        (Math.random() - 0.5) * this.shakeIntensity * 0.7,
+        (Math.random() - 0.5) * this.shakeIntensity * 0.7
+      );
+      this.camera.position.add(this.shakeOffset);
+    }
 
     // Camera points ahead of vehicle direction
     const lookTarget = this.activeVehicle.position.clone().add(

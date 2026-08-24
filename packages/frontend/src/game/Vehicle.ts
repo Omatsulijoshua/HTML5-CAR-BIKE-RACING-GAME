@@ -11,6 +11,7 @@ export abstract class Vehicle {
   public velocity: THREE.Vector3 = new THREE.Vector3();
   public speed: number = 0;
   public angle: number = 0;
+  public hasCollidedThisFrame: boolean = false;
 
   // Drift and Nitro state
   public isDrifting: boolean = false;
@@ -174,6 +175,11 @@ export abstract class Vehicle {
       distToCenter.normalize().multiplyScalar(maxAllowedDist);
       this.position.x = trackPoint.x + distToCenter.x;
       this.position.z = trackPoint.z + distToCenter.z;
+
+      // Trigger impact shake if moving fast enough
+      if (Math.abs(this.speed) > 5) {
+        this.hasCollidedThisFrame = true;
+      }
 
       // Slow down drastically and bounce back slightly
       if (this.speed > 5) {

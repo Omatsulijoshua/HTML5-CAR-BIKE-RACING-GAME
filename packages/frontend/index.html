@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Arcade Racing Game</title>
     <style>
         body {
@@ -68,6 +68,55 @@
         button:hover {
             background-color: #e02d22;
         }
+        
+        /* Mobile Touch Controls Overlay */
+        #mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 25px;
+            left: 0;
+            width: 100%;
+            z-index: 20;
+            pointer-events: none;
+            box-sizing: border-box;
+            padding: 0 30px;
+            justify-content: space-between;
+        }
+        .touch-group {
+            display: flex;
+            gap: 15px;
+            pointer-events: auto;
+        }
+        .touch-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+            color: white;
+            user-select: none;
+            touch-action: none;
+            cursor: pointer;
+            transition: background-color 0.1s, transform 0.1s;
+        }
+        .touch-btn:active {
+            background: rgba(255, 59, 48, 0.65);
+            border-color: #ff3b30;
+            transform: scale(0.9);
+        }
+        .touch-btn.accent {
+            background: rgba(255, 59, 48, 0.3);
+            border-color: rgba(255, 59, 48, 0.6);
+        }
+        .touch-btn.secondary {
+            background: rgba(0, 122, 255, 0.3);
+            border-color: rgba(0, 122, 255, 0.6);
+        }
     </style>
 </head>
 <body>
@@ -81,9 +130,29 @@
             <div id="status-text" style="margin-top: 10px; font-size: 12px; color: #aaa;">
                 Checking connection to backend...
             </div>
+            <div style="margin-top: 12px; font-size: 10px; color: #888; text-transform: uppercase;">
+                Press C for Car | B for Bike
+            </div>
         </div>
         <div></div>
     </div>
+
+    <!-- Mobile Touch Controls Overlay -->
+    <div id="mobile-controls">
+        <!-- Left Side: Steering -->
+        <div class="touch-group">
+            <div id="btn-left" class="touch-btn">&larr; STEER</div>
+            <div id="btn-right" class="touch-btn">STEER &rarr;</div>
+        </div>
+        <!-- Right Side: Driving actions -->
+        <div class="touch-group">
+            <div id="btn-drift" class="touch-btn secondary">DRIFT</div>
+            <div id="btn-brake" class="touch-btn accent">BRAKE</div>
+            <div id="btn-gas" class="touch-btn accent">GAS</div>
+            <div id="btn-nitro" class="touch-btn secondary">NITRO</div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

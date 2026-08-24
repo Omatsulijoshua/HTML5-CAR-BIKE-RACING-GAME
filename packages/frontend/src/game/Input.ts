@@ -59,4 +59,11 @@ export class Input {
     if (this.keys.steerRight) steer += 1;
     return steer;
   }
+
+  public setTouchInput(
+    action: "accelerate" | "brake" | "steerLeft" | "steerRight" | "nitro" | "drift",
+    isDown: boolean
+  ): void {
+    this.keys[action] = isDown;
+  }
 }
