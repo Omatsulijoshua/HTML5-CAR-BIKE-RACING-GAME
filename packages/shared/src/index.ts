@@ -148,3 +148,68 @@ export const DEFAULT_VEHICLES: Record<string, VehicleConfig> = {
   },
 };
 
+export type AIDifficulty = "easy" | "normal" | "hard" | "expert";
+
+export interface CareerStageConfig {
+  id: string;
+  name: string;
+  laps: number;
+  aiCount: number;
+  aiDifficulties: AIDifficulty[];
+  rewards: {
+    coins: Record<number, number>; // standing (1st: 1, 2nd: 2, etc.) -> coins
+    xp: Record<number, number>; // standing -> xp
+  };
+  unlockCondition?: string; // previous stage ID
+  unlocksVehicleId?: string; // vehicle unlocked on 1st place
+}
+
+export const CAREER_STAGES: CareerStageConfig[] = [
+  {
+    id: "stage_1",
+    name: "Beginner Sprint",
+    laps: 2,
+    aiCount: 1,
+    aiDifficulties: ["easy"],
+    rewards: {
+      coins: { 1: 300, 2: 150, 3: 50 },
+      xp: { 1: 100, 2: 50, 3: 20 },
+    },
+  },
+  {
+    id: "stage_2",
+    name: "Desert Dunes Dash",
+    laps: 2,
+    aiCount: 2,
+    aiDifficulties: ["easy", "normal"],
+    rewards: {
+      coins: { 1: 450, 2: 250, 3: 100 },
+      xp: { 1: 150, 2: 80, 3: 40 },
+    },
+    unlockCondition: "stage_1",
+  },
+  {
+    id: "stage_3",
+    name: "Forest Rush Trial",
+    laps: 3,
+    aiCount: 2,
+    aiDifficulties: ["normal", "hard"],
+    rewards: {
+      coins: { 1: 600, 2: 350, 3: 150 },
+      xp: { 1: 200, 2: 120, 3: 60 },
+    },
+    unlockCondition: "stage_2",
+  },
+  {
+    id: "stage_4",
+    name: "Grand Finale Championship",
+    laps: 3,
+    aiCount: 2,
+    aiDifficulties: ["hard", "expert"],
+    rewards: {
+      coins: { 1: 1000, 2: 500, 3: 200 },
+      xp: { 1: 350, 2: 200, 3: 100 },
+    },
+    unlockCondition: "stage_3",
+  },
+];

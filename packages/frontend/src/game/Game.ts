@@ -5,7 +5,8 @@ import { Vehicle } from "./Vehicle";
 import { Car } from "./Car";
 import { Bike } from "./Bike";
 import { AIController } from "./AIController";
-import { DEFAULT_VEHICLES } from "@racing-game/shared";
+import { SaveSystem } from "./SaveSystem";
+import { DEFAULT_VEHICLES, CareerStageConfig } from "@racing-game/shared";
 
 export class Game {
   private container: HTMLElement;
@@ -32,6 +33,8 @@ export class Game {
   private shakeOffset: THREE.Vector3 = new THREE.Vector3();
 
   // Race Manager states
+  private stageConfig: CareerStageConfig;
+  private onCompleteCallback: (results: { standing: number; coins: number; xp: number; levelUp: boolean }) => void;
   private raceStarted: boolean = false;
   private raceFinished: boolean = false;
   private raceTime: number = 0;
@@ -47,8 +50,16 @@ export class Game {
   private nitroBarElement!: HTMLElement;
   private bannerElement!: HTMLElement;
 
-  constructor(container: HTMLElement) {
+  constructor(
+    container: HTMLElement,
+    stageConfig: CareerStageConfig,
+    onCompleteCallback: (results: { standing: number; coins: number; xp: number; levelUp: boolean }) => void
+  ) {
     this.container = container;
+    this.stageConfig = stageConfig;
+    this.onCompleteCallback = onCompleteCallback;
+    this.totalLaps = stageConfig.laps;
+
     this.initThree();
     this.initSceneObjects();
     this.initHUD();
@@ -136,62 +147,62 @@ export class Game {
     this.activeVehicle = this.carInstance;
     this.scene.add(this.activeVehicle.mesh);
 
-    // 5. Instantiate AI Vehicles (Car and Bike)
-    const aiCar = new Car(DEFAULT_VEHICLES.starter_car, this.track);
-    aiCar.driverName = "Volt Viper (AI)";
-    // Change body color to yellow for visual separation
-    const carChassis = aiCar.mesh.children[0] as THREE.Mesh;
-    if (carChassis && carChassis.material instanceof THREE.MeshStandardMaterial) {
-      const mat = carChassis.material.clone();
-      mat.color.setHex(0xffcc00); // Yellow
-      carChassis.material = mat;
-    }
-
-    const aiBike = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
-    aiBike.driverName = "Apex Specter (AI)";
-    // Change body color to bright green
-    const bikeChassis = aiBike.mesh.children[0] as THREE.Mesh;
-    if (bikeChassis && bikeChassis.material instanceof THREE.MeshStandardMaterial) {
-      const mat = bikeChassis.material.clone();
-      mat.color.setHex(0x39ff14); // Green
-      bikeChassis.material = mat;
-    }
-
-    // 6. Set Starting Grid Positions
+    // 5. Set Starting Grid positions
     const startT = 0;
     const startPoint = this.track.curve.getPointAt(startT);
     const tangent = this.track.curve.getTangentAt(startT);
     const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
     const headingAngle = Math.atan2(tangent.x, tangent.z);
 
-    // Player position
     this.activeVehicle.position.copy(startPoint);
     this.activeVehicle.mesh.position.copy(startPoint);
     this.activeVehicle.angle = headingAngle;
     this.activeVehicle.mesh.rotation.y = headingAngle;
 
-    // AI 1 (Left lane, 5m back)
-    const ai1Pos = startPoint.clone().add(normal.clone().multiplyScalar(2.2)).addScaledVector(tangent, -5.0);
-    aiCar.position.copy(ai1Pos);
-    aiCar.mesh.position.copy(ai1Pos);
-    aiCar.angle = headingAngle;
-    aiCar.mesh.rotation.y = headingAngle;
-    this.scene.add(aiCar.mesh);
+    this.allVehicles = [this.activeVehicle];
 
-    // AI 2 (Right lane, 10m back)
-    const ai2Pos = startPoint.clone().add(normal.clone().multiplyScalar(-2.2)).addScaledVector(tangent, -10.0);
-    aiBike.position.copy(ai2Pos);
-    aiBike.mesh.position.copy(ai2Pos);
-    aiBike.angle = headingAngle;
-    aiBike.mesh.rotation.y = headingAngle;
-    this.scene.add(aiBike.mesh);
+    // 6. Spawn AI Opponents dynamically
+    const aiCount = this.stageConfig.aiCount;
+    for (let i = 0; i < aiCount; i++) {
+      const difficulty = this.stageConfig.aiDifficulties[i] || "normal";
+      let aiVehicle: Vehicle;
 
-    // Register all active vehicles in standing rankings
-    this.allVehicles = [this.activeVehicle, aiCar, aiBike];
+      if (i % 2 === 0) {
+        aiVehicle = new Car(DEFAULT_VEHICLES.starter_car, this.track);
+        aiVehicle.driverName = `Volt Viper ${i + 1} (AI)`;
+        const chassis = aiVehicle.mesh.children[0] as THREE.Mesh;
+        if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
+          const mat = chassis.material.clone();
+          mat.color.setHex(0xffcc00); // Yellow
+          chassis.material = mat;
+        }
+      } else {
+        aiVehicle = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
+        aiVehicle.driverName = `Apex Specter ${i + 1} (AI)`;
+        const chassis = aiVehicle.mesh.children[0] as THREE.Mesh;
+        if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
+          const mat = chassis.material.clone();
+          mat.color.setHex(0x39ff14); // Green
+          chassis.material = mat;
+        }
+      }
 
-    // Initialize AI Controllers
-    this.aiControllers.push(new AIController(aiCar, this.track, "normal"));
-    this.aiControllers.push(new AIController(aiBike, this.track, "hard"));
+      // Grid offsets
+      const gridOffset = -(5.0 + i * 5.0);
+      const laneOffset = i % 2 === 0 ? 2.2 : -2.2;
+      const aiPos = startPoint.clone().add(normal.clone().multiplyScalar(laneOffset)).addScaledVector(tangent, gridOffset);
+
+      aiVehicle.position.copy(aiPos);
+      aiVehicle.mesh.position.copy(aiPos);
+      aiVehicle.angle = headingAngle;
+      aiVehicle.mesh.rotation.y = headingAngle;
+
+      this.scene.add(aiVehicle.mesh);
+      this.allVehicles.push(aiVehicle);
+
+      // Create AI controller
+      this.aiControllers.push(new AIController(aiVehicle, this.track, difficulty));
+    }
   }
 
   private initHUD(): void {
@@ -233,7 +244,7 @@ export class Game {
 
     console.log(`Swapping to: ${targetVehicle.config.name}`);
 
-    // Transfer physical momentum and kinematics seamlessly
+    // Transfer momentum
     targetVehicle.position.copy(this.activeVehicle.position);
     targetVehicle.angle = this.activeVehicle.angle;
     targetVehicle.speed = this.activeVehicle.speed;
@@ -248,18 +259,16 @@ export class Game {
     this.activeVehicle = targetVehicle;
     this.scene.add(this.activeVehicle.mesh);
 
-    // Update standing list index 0 with player active vehicle reference
+    // Update standing list index 0
     this.allVehicles[0] = this.activeVehicle;
 
-    // Update mesh position immediately
+    // Update position
     this.activeVehicle.mesh.position.copy(targetVehicle.position);
     this.activeVehicle.mesh.rotation.y = targetVehicle.angle;
   }
 
   private respawnActiveVehicle(): void {
-    console.log("Respawning active vehicle...");
     const idx = this.activeVehicle.lastCheckpointIndex;
-    
     let respawnPos: THREE.Vector3;
     let tangent: THREE.Vector3;
 
@@ -309,12 +318,10 @@ export class Game {
   }
 
   private updatePhysics(dt: number): void {
-    // 1. Update obstacle physics (flying cones)
     this.track.updateObstacles(dt);
 
-    // 2. Drive AI vehicles
+    // Drive AIs
     this.aiControllers.forEach((ai) => {
-      // If the AI has crossed the finish line, cap/brake it
       if (ai.vehicle.isFinished) {
         ai.vehicle.update(dt, {
           accelerate: false,
@@ -329,7 +336,7 @@ export class Game {
       }
     });
 
-    // 3. Drive Player vehicle
+    // Drive Player
     if (this.raceFinished) {
       this.activeVehicle.update(dt, {
         accelerate: false,
@@ -351,18 +358,16 @@ export class Game {
       });
     }
 
-    // 4. Update check progress and laps for ALL vehicles
+    // Check lap progress for all
     this.allVehicles.forEach((vehicle) => {
       this.checkVehicleProgress(vehicle);
     });
 
-    // Check collision camera shakes
     if (this.activeVehicle.hasCollidedThisFrame) {
       this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.7);
       this.activeVehicle.hasCollidedThisFrame = false;
     }
 
-    // Nitro shakes
     if (this.activeVehicle.isNitroActive) {
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
     }
@@ -380,7 +385,6 @@ export class Game {
       if (dist < 9.0) {
         vehicle.lastCheckpointIndex = nextIdx;
         
-        // Notify player on screen if it is the local player
         if (vehicle === this.activeVehicle && nextIdx < 4) {
           this.showBanner(`CHECKPOINT ${nextIdx + 1}/5`, 1.2);
         }
@@ -401,9 +405,39 @@ export class Game {
         if (vehicle === this.activeVehicle) {
           this.raceFinished = true;
           this.showBanner("FINISH!", 10.0);
-          console.log(`Player Finished! Time: ${this.raceTime.toFixed(2)}s`);
-        } else {
-          console.log(`AI Opponent '${vehicle.driverName}' Finished!`);
+
+          // Calculate final standing
+          const getStandingScore = (veh: Vehicle) => {
+            const lapScore = veh.currentLap * 10000;
+            const checkpointScore = (veh.lastCheckpointIndex + 1) * 1000;
+            const nextCPIdx = (veh.lastCheckpointIndex + 1) % 5;
+            const nextCP = this.track.checkpoints[nextCPIdx];
+            const dist = nextCP ? veh.position.distanceTo(nextCP) : 0;
+            return lapScore + checkpointScore - dist;
+          };
+          const sorted = [...this.allVehicles].sort((a, b) => getStandingScore(b) - getStandingScore(a));
+          const standing = sorted.indexOf(this.activeVehicle) + 1;
+
+          // Process rewards
+          const coinsEarned = this.stageConfig.rewards.coins[standing] || 50;
+          const xpEarned = this.stageConfig.rewards.xp[standing] || 10;
+          
+          const results = SaveSystem.addRewards(coinsEarned, xpEarned);
+
+          // If 1st place, mark current stage completed to unlock next stage!
+          if (standing === 1) {
+            SaveSystem.unlockStage(this.stageConfig.id);
+          }
+
+          // Transition back callback
+          setTimeout(() => {
+            this.onCompleteCallback({
+              standing,
+              coins: coinsEarned,
+              xp: xpEarned,
+              levelUp: results.levelUp,
+            });
+          }, 2500);
         }
       } else if (vehicle === this.activeVehicle) {
         this.showBanner(`LAP ${vehicle.currentLap}/${this.totalLaps}`, 1.8);
@@ -412,7 +446,6 @@ export class Game {
   }
 
   private checkBoostPadsCollisions(): void {
-    // Player boost pad overlaps (only affect player, AI handles its own boost logic)
     this.track.boostPads.forEach((pad) => {
       const dist = this.activeVehicle.position.distanceTo(pad.position);
       if (dist < 4.5 && this.activeVehicle.padBoostTime <= 0) {
@@ -424,7 +457,6 @@ export class Game {
   }
 
   private checkObstaclesCollisions(): void {
-    // Player and AI obstacle collisions
     this.allVehicles.forEach((vehicle) => {
       this.track.obstacles.forEach((obs) => {
         if (obs.hit) return;
@@ -433,7 +465,6 @@ export class Game {
         if (dist < 1.8) {
           obs.hit = true;
 
-          // Launch cone mesh in vector of movement
           const heading = new THREE.Vector3(
             Math.sin(vehicle.angle),
             0,
@@ -443,10 +474,8 @@ export class Game {
           obs.velocity.copy(heading).multiplyScalar(vehicle.speed * 0.7 + 8);
           obs.velocity.y = 6.0;
 
-          // Slow down vehicle
           vehicle.speed *= 0.55;
 
-          // Screen cues for local player
           if (vehicle === this.activeVehicle) {
             this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.6);
             this.showBanner("CONE HIT!", 0.8);
@@ -494,22 +523,16 @@ export class Game {
   }
 
   private updateHUD(dt: number): void {
-    // 1. Standings Ranking System
+    // Standings calculation
     const getStandingScore = (veh: Vehicle) => {
-      // Completed Laps score weight
       const lapScore = veh.currentLap * 10000;
-      // Visited checkpoints score weight
       const checkpointScore = (veh.lastCheckpointIndex + 1) * 1000;
-      
-      // Distance to next checkpoint (smaller distance = better progress)
       const nextIdx = (veh.lastCheckpointIndex + 1) % 5;
       const nextCP = this.track.checkpoints[nextIdx];
       const dist = nextCP ? veh.position.distanceTo(nextCP) : 0;
-      
       return lapScore + checkpointScore - dist;
     };
 
-    // Sort descending by score
     const sorted = [...this.allVehicles].sort((a, b) => getStandingScore(b) - getStandingScore(a));
     const playerStanding = sorted.indexOf(this.activeVehicle) + 1;
     const suffix = playerStanding === 1 ? "st" : playerStanding === 2 ? "nd" : "3rd";
@@ -518,29 +541,29 @@ export class Game {
       this.posElement.textContent = `POS: ${playerStanding}${suffix}/3`;
     }
 
-    // 2. Speedometer
+    // Speedometer
     const kmh = Math.round(Math.abs(this.activeVehicle.speed) * 3.6);
     if (this.speedElement) {
       this.speedElement.textContent = kmh.toString();
     }
 
-    // 3. Timer
+    // Timer
     if (this.timerElement) {
       this.timerElement.textContent = `TIME: ${this.raceTime.toFixed(1)}s`;
     }
 
-    // 4. Lap counts
+    // Lap count
     if (this.lapElement) {
       const displayLap = Math.min(this.activeVehicle.currentLap, this.totalLaps);
       this.lapElement.textContent = `LAP ${displayLap}/${this.totalLaps}`;
     }
 
-    // 5. Nitro fuel progress bar width
+    // Nitro fuel progress bar width
     if (this.nitroBarElement) {
       this.nitroBarElement.style.width = `${this.activeVehicle.nitroFuel}%`;
     }
 
-    // 6. Banner duration decay
+    // Banner visibility
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;
       if (this.bannerTimer <= 0 && this.bannerElement && !this.raceFinished) {
@@ -548,7 +571,6 @@ export class Game {
       }
     }
 
-    // Also run boost and obstacle checks in main frame
     this.checkBoostPadsCollisions();
     this.checkObstaclesCollisions();
   }

@@ -1,8 +1,7 @@
 import * as THREE from "three";
 import { Vehicle } from "./Vehicle";
 import { Track } from "./Track";
-
-export type AIDifficulty = "easy" | "normal" | "hard" | "expert";
+import { AIDifficulty } from "@racing-game/shared";
 
 export class AIController {
   public vehicle: Vehicle;

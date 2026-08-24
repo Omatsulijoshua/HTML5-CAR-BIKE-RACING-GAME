@@ -122,18 +122,61 @@
 <body>
     <div id="canvas-container"></div>
     <div id="ui-container">
-        <div></div>
-        <div class="card interactive">
-            <h1>Arcade Racing</h1>
-            <p>Phase 1: Project Foundation Loaded Successfully!</p>
-            <button id="test-btn">Start Game</button>
-            <div id="status-text" style="margin-top: 10px; font-size: 12px; color: #aaa;">
-                Checking connection to backend...
+        <!-- Top Dashboard Bar -->
+        <div id="dashboard-bar" class="interactive" style="display: flex; justify-content: space-between; align-items: center; width: 100%; background: rgba(0,0,0,0.85); padding: 15px 30px; box-sizing: border-box; border-bottom: 2px solid #ff3b30; pointer-events: auto;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="font-size: 20px; font-weight: bold; color: #ff3b30; text-transform: uppercase; letter-spacing: 1px;">ARCADE RACER</div>
+                <div id="status-text" style="font-size: 11px; color: #aaa;">Checking server...</div>
             </div>
-            <div style="margin-top: 12px; font-size: 10px; color: #888; text-transform: uppercase;">
-                Press C for Car | B for Bike
+            
+            <div style="display: flex; gap: 30px; font-weight: bold;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #ffcc00; font-size: 13px;">🪙 COINS:</span>
+                    <span id="player-coins" style="color: #ffffff; font-size: 16px;">100</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="color: #39ff14; font-size: 13px;">⭐ LEVEL:</span>
+                    <span id="player-level" style="color: #ffffff; font-size: 16px; margin-right: 5px;">1</span>
+                    <div style="width: 100px; height: 10px; background: rgba(255,255,255,0.1); border: 1px solid #39ff14; border-radius: 5px; overflow: hidden; display: inline-block; vertical-align: middle;">
+                        <div id="player-xp-bar" style="width: 0%; height: 100%; background: #39ff14;"></div>
+                    </div>
+                </div>
             </div>
         </div>
+
+        <!-- Main Menus Selection -->
+        <div id="menu-card" class="card interactive" style="margin-top: 40px; width: 90%; max-width: 750px; flex-grow: 0;">
+            <h1>Career Mode</h1>
+            <p style="color: #ccc; font-size: 13px; margin-bottom: 20px;">Complete stages sequentially to unlock rewards and premium races!</p>
+            
+            <!-- Stages List Container -->
+            <div id="stages-list" style="display: flex; flex-direction: column; gap: 12px; text-align: left; max-height: 380px; overflow-y: auto; padding-right: 5px;">
+                <!-- Stage Items will be populated programmatically by main.ts -->
+            </div>
+        </div>
+
+        <!-- Results Popup screen -->
+        <div id="results-popup" class="card interactive" style="display: none; padding: 30px; max-width: 450px; margin-top: auto; margin-bottom: auto;">
+            <h1 id="results-header" style="color: #39ff14; font-size: 38px; margin-bottom: 5px;">1st PLACE!</h1>
+            <p style="font-size: 14px; color: #aaa; text-transform: uppercase; margin-bottom: 25px;">Race Results</p>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px; text-align: left; background: rgba(255,255,255,0.05); padding: 20px; border-radius: 6px; margin-bottom: 25px; border: 1px dashed rgba(255,255,255,0.15);">
+                <div style="display: flex; justify-content: space-between; font-size: 16px;">
+                    <span>COINS EARNED:</span>
+                    <span id="reward-coins" style="color: #ffcc00; font-weight: bold;">+300</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 16px;">
+                    <span>XP GAINED:</span>
+                    <span id="reward-xp" style="color: #39ff14; font-weight: bold;">+100</span>
+                </div>
+                <div id="levelup-alert" style="color: #ff2d55; font-weight: bold; text-align: center; display: none; font-size: 14px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; margin-top: 5px;">
+                    🎉 LEVEL UP! NEXT LEVEL REACHED!
+                </div>
+            </div>
+
+            <button id="back-to-menu-btn" style="width: 100%; padding: 12px; font-size: 16px;">Back To Menu</button>
+        </div>
+        
         <div></div>
     </div>
 
