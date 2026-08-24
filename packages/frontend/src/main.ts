@@ -1,11 +1,11 @@
 import { Game } from "./game/Game";
 import { SaveSystem } from "./game/SaveSystem";
 import { io } from "socket.io-client";
-import { CAREER_STAGES, CareerStageConfig } from "@racing-game/shared";
+import { CAREER_STAGES, CareerStageConfig, SocketEvent, RoomInfo } from "@racing-game/shared";
 
 console.log("Bootstrapping Racing Game...");
 
-// 1. Initialize Socket
+// 1. Initialize Socket.IO Client
 const socket = io("http://localhost:3001", {
   autoConnect: true,
   reconnectionAttempts: 5,
@@ -14,29 +14,61 @@ const socket = io("http://localhost:3001", {
 const statusText = document.getElementById("status-text");
 if (statusText) {
   socket.on("connect", () => {
-    statusText.textContent = `ONLINE | ID: ${socket.id}`;
-    statusText.style.color = "#4cd964";
+    statusText.textContent = `ONLINE`;
+    statusText.style.color = "#39ff14";
+    // Ask for list of rooms immediately on connect
+    socket.emit(SocketEvent.GET_ROOMS);
   });
 
   socket.on("disconnect", () => {
-    statusText.textContent = "OFFLINE | Reconnecting...";
+    statusText.textContent = "OFFLINE";
     statusText.style.color = "#ff3b30";
   });
 
   socket.on("connect_error", () => {
-    statusText.textContent = "SERVER FAIL";
+    statusText.textContent = "SERVER ERR";
     statusText.style.color = "#ff3b30";
   });
 }
 
-// 2. Initialize Save Profile & Menu
+// 2. Local State Variables
 let game: Game | null = null;
 const container = document.getElementById("canvas-container")!;
+let isHost = false;
 
+// 3. Tab Switching Layouts
+const tabCareerBtn = document.getElementById("tab-career-btn")!;
+const tabMultiplayerBtn = document.getElementById("tab-multiplayer-btn")!;
+const careerTabContent = document.getElementById("career-tab-content")!;
+const multiplayerTabContent = document.getElementById("multiplayer-tab-content")!;
+
+tabCareerBtn.addEventListener("click", () => {
+  tabCareerBtn.style.color = "#ff3b30";
+  tabCareerBtn.style.borderBottom = "3px solid #ff3b30";
+  tabMultiplayerBtn.style.color = "#888";
+  tabMultiplayerBtn.style.borderBottom = "none";
+
+  careerTabContent.style.display = "block";
+  multiplayerTabContent.style.display = "none";
+});
+
+tabMultiplayerBtn.addEventListener("click", () => {
+  tabMultiplayerBtn.style.color = "#ff3b30";
+  tabMultiplayerBtn.style.borderBottom = "3px solid #ff3b30";
+  tabCareerBtn.style.color = "#888";
+  tabCareerBtn.style.borderBottom = "none";
+
+  multiplayerTabContent.style.display = "block";
+  careerTabContent.style.display = "none";
+
+  // Query lobbies list when entering tab
+  socket.emit(SocketEvent.GET_ROOMS);
+});
+
+// 4. Update Profile & Career Stage Dashboard
 function refreshMenuDashboard(): void {
   const profile = SaveSystem.loadProfile();
   
-  // Dashboard text updates
   const coinsText = document.getElementById("player-coins");
   const levelText = document.getElementById("player-level");
   const xpBar = document.getElementById("player-xp-bar");
@@ -50,10 +82,16 @@ function refreshMenuDashboard(): void {
     xpBar.style.width = `${ratio}%`;
   }
 
+  // Set default username value in inputs if not changed
+  const usernameInput = document.getElementById("player-username") as HTMLInputElement;
+  if (usernameInput && usernameInput.value === "Guest Racer") {
+    usernameInput.value = profile.username;
+  }
+
   // Draw stages selection list
   const listContainer = document.getElementById("stages-list");
   if (listContainer) {
-    listContainer.innerHTML = ""; // clear
+    listContainer.innerHTML = "";
     
     CAREER_STAGES.forEach((stage) => {
       const isUnlocked = !stage.unlockCondition || profile.completedStages.includes(stage.unlockCondition);
@@ -105,29 +143,24 @@ function refreshMenuDashboard(): void {
   }
 }
 
+// 5. Start Single-Player Race
 function startRace(stage: CareerStageConfig): void {
-  // Hide menus
   const menuCard = document.getElementById("menu-card");
   if (menuCard) menuCard.style.display = "none";
   
-  console.log(`Loading Career Stage: ${stage.name}`);
+  console.log(`Starting Career stage: ${stage.name}`);
   
-  // Clean start game engine
   if (game) {
     game.destroy();
   }
 
   game = new Game(container, stage, (results) => {
-    // Complete callback:
-    // 1. Destroy active game scene
     game?.destroy();
     game = null;
     
-    // 2. Hide racing HUD
     const hud = document.getElementById("hud");
     if (hud) hud.style.display = "none";
     
-    // 3. Populate and show results popup
     const popup = document.getElementById("results-popup");
     const header = document.getElementById("results-header");
     const coinsTxt = document.getElementById("reward-coins");
@@ -152,22 +185,257 @@ function startRace(stage: CareerStageConfig): void {
   (window as any).game = game;
 }
 
-// Results "Back to Menu" action
+// Results screen "Back to Menu"
 const backToMenuBtn = document.getElementById("back-to-menu-btn");
 if (backToMenuBtn) {
   backToMenuBtn.addEventListener("click", () => {
-    // Hide results
     const popup = document.getElementById("results-popup");
     if (popup) popup.style.display = "none";
     
-    // Show main menus
     const menuCard = document.getElementById("menu-card");
     if (menuCard) menuCard.style.display = "block";
 
-    // Refresh layout
     refreshMenuDashboard();
   });
 }
 
-// Initial draw
+// 6. Multiplayer Lobbies Client Emitters
+const usernameInput = document.getElementById("player-username") as HTMLInputElement;
+const createRoomBtn = document.getElementById("create-room-btn")!;
+
+createRoomBtn.addEventListener("click", () => {
+  const username = usernameInput?.value.trim() || "Guest Racer";
+  console.log(`Requesting room creation for: ${username}`);
+  
+  // Save username chosen
+  const profile = SaveSystem.loadProfile();
+  profile.username = username;
+  SaveSystem.saveProfile(profile);
+  
+  socket.emit(SocketEvent.CREATE_ROOM, { username });
+});
+
+// 7. Sockets Room Event Receivers
+socket.on(SocketEvent.ROOMS_LIST, (data: { rooms: RoomInfo[] }) => {
+  const listContainer = document.getElementById("lobbies-list");
+  if (!listContainer) return;
+
+  listContainer.innerHTML = "";
+
+  if (data.rooms.length === 0) {
+    listContainer.innerHTML = `
+      <div style="color: #888; text-align: center; padding: 20px; font-style: italic;">
+        No active matches found. Create one above!
+      </div>
+    `;
+    return;
+  }
+
+  data.rooms.forEach((room) => {
+    const item = document.createElement("div");
+    item.style.display = "flex";
+    item.style.justifyContent = "space-between";
+    item.style.alignItems = "center";
+    item.style.background = "rgba(255, 255, 255, 0.05)";
+    item.style.padding = "10px 15px";
+    item.style.borderRadius = "4px";
+    item.style.border = "1px solid rgba(255,255,255,0.08)";
+
+    item.innerHTML = `
+      <div>
+        <div style="font-weight: bold; color: #ffcc00; font-family: monospace;">ROOM ID: ${room.roomId}</div>
+        <div style="font-size: 12px; color: #aaa; margin-top: 2px;">
+          Host: ${room.hostName} | Players: ${room.playerCount}/${room.maxPlayers}
+        </div>
+      </div>
+    `;
+
+    const joinBtn = document.createElement("button");
+    joinBtn.textContent = "JOIN";
+    joinBtn.style.padding = "6px 12px";
+    joinBtn.style.fontSize = "12px";
+
+    if (room.status !== "lobby" || room.playerCount >= room.maxPlayers) {
+      joinBtn.disabled = true;
+      joinBtn.textContent = room.status !== "lobby" ? "PLAYING" : "FULL";
+      joinBtn.style.background = "#333";
+      joinBtn.style.borderColor = "#333";
+    } else {
+      joinBtn.addEventListener("click", () => {
+        const username = usernameInput?.value.trim() || "Guest Racer";
+        socket.emit(SocketEvent.JOIN_ROOM, { roomId: room.roomId, username });
+      });
+    }
+
+    item.appendChild(joinBtn);
+    listContainer.appendChild(item);
+  });
+});
+
+socket.on(SocketEvent.ROOM_CREATED, (data: { roomId: string; hostId: string; players: any[] }) => {
+  isHost = true;
+
+  showLobby(data.roomId, data.players);
+});
+
+socket.on(SocketEvent.ROOM_JOINED, (data: { success: boolean; error?: string; roomId?: string; hostId?: string; players?: any[] }) => {
+  if (!data.success) {
+    alert(`Failed to join room: ${data.error}`);
+    return;
+  }
+
+  isHost = (socket.id === data.hostId);
+
+  showLobby(data.roomId!, data.players!);
+});
+
+socket.on(SocketEvent.PLAYER_JOINED, (data: { player: any; players: any[] }) => {
+  console.log(`Player joined: ${data.player.username}`);
+  updatePlayersLobbyList(data.players);
+});
+
+socket.on(SocketEvent.PLAYER_READY, (data: { playerId: string; isReady: boolean; players: any[] }) => {
+  console.log(`Player ${data.playerId} ready state toggled: ${data.isReady}`);
+  updatePlayersLobbyList(data.players);
+});
+
+socket.on(SocketEvent.PLAYER_DISCONNECTED, (data: { playerId: string; players: any[] }) => {
+  console.log(`Player ${data.playerId} disconnected`);
+  updatePlayersLobbyList(data.players);
+});
+
+socket.on(SocketEvent.ROOM_CLOSED, () => {
+  alert("Lobby room was closed by the host.");
+  exitLobbyUI();
+});
+
+// 8. Lobby UI helpers
+function showLobby(roomId: string, players: any[]): void {
+  // Hide menu selection
+  document.getElementById("menu-card")!.style.display = "none";
+  
+  // Show lobby room card
+  const lobbyCard = document.getElementById("room-lobby-card")!;
+  lobbyCard.style.display = "block";
+
+  // Set roomId label
+  document.getElementById("lobby-room-id")!.textContent = roomId;
+
+  // Toggle Start button visibility based on Host permissions
+  const startBtn = document.getElementById("lobby-start-btn")!;
+  const readyBtn = document.getElementById("lobby-ready-btn")!;
+
+  if (isHost) {
+    startBtn.style.display = "block";
+    readyBtn.style.display = "none";
+  } else {
+    startBtn.style.display = "none";
+    readyBtn.style.display = "block";
+    readyBtn.textContent = "READY";
+    readyBtn.style.background = "";
+  }
+
+  updatePlayersLobbyList(players);
+}
+
+function updatePlayersLobbyList(players: any[]): void {
+  const container = document.getElementById("lobby-players-list")!;
+  container.innerHTML = "";
+
+  let allReady = true;
+
+  players.forEach((player) => {
+    const isLocal = player.id === socket.id;
+    const isPlayerHost = player.id === players[0].id; // First player in list is Host
+
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "center";
+    row.style.background = "rgba(255,255,255,0.05)";
+    row.style.padding = "10px 15px";
+    row.style.borderRadius = "4px";
+    row.style.border = isLocal ? "1px solid #39ff14" : "1px solid rgba(255,255,255,0.05)";
+
+    const label = document.createElement("div");
+    label.innerHTML = `
+      <span style="font-weight: bold; color: #fff;">${player.username}</span>
+      ${isLocal ? '<span style="font-size: 10px; color: #39ff14; margin-left: 5px;">(YOU)</span>' : ""}
+      ${isPlayerHost ? '<span style="font-size: 10px; color: #ffcc00; margin-left: 5px;">(HOST)</span>' : ""}
+    `;
+
+    const statusBadge = document.createElement("div");
+    if (isPlayerHost || player.isReady) {
+      statusBadge.textContent = "READY";
+      statusBadge.style.color = "#39ff14";
+      statusBadge.style.fontSize = "12px";
+      statusBadge.style.fontWeight = "bold";
+    } else {
+      statusBadge.textContent = "NOT READY";
+      statusBadge.style.color = "#ff3b30";
+      statusBadge.style.fontSize = "12px";
+      statusBadge.style.fontWeight = "bold";
+      allReady = false;
+    }
+
+    row.appendChild(label);
+    row.appendChild(statusBadge);
+    container.appendChild(row);
+  });
+
+  // Enable Start Match for Host if all other players are ready
+  if (isHost && players.length > 1) {
+    const startBtn = document.getElementById("lobby-start-btn") as HTMLButtonElement;
+    if (startBtn) {
+      startBtn.disabled = !allReady;
+    }
+  }
+}
+
+function exitLobbyUI(): void {
+  isHost = false;
+
+  document.getElementById("room-lobby-card")!.style.display = "none";
+  document.getElementById("menu-card")!.style.display = "block";
+
+  refreshMenuDashboard();
+}
+
+// 9. Match Lobby Button Click Handlers
+const readyBtn = document.getElementById("lobby-ready-btn")!;
+const leaveBtn = document.getElementById("lobby-leave-btn")!;
+const startBtn = document.getElementById("lobby-start-btn")!;
+
+readyBtn.addEventListener("click", () => {
+  socket.emit(SocketEvent.READY);
+  
+  // Toggle ready button visual styling instantly for responsiveness
+  if (readyBtn.textContent === "READY") {
+    readyBtn.textContent = "CANCEL READY";
+    readyBtn.style.background = "#ff3b30";
+  } else {
+    readyBtn.textContent = "READY";
+    readyBtn.style.background = "";
+  }
+});
+
+leaveBtn.addEventListener("click", () => {
+  socket.emit(SocketEvent.LEAVE_ROOM);
+  exitLobbyUI();
+});
+
+// Start race triggers free-play mock arcade for testing room integration
+startBtn.addEventListener("click", () => {
+  if (isHost) {
+    console.log("Host triggered match start. Booting track circuit...");
+    
+    // Hide room lobbies
+    document.getElementById("room-lobby-card")!.style.display = "none";
+    
+    // Load track 1 configuration (Stage 1 stats)
+    startRace(CAREER_STAGES[0]);
+  }
+});
+
+// Initial Dashboard Draw
 refreshMenuDashboard();

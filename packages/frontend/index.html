@@ -145,13 +145,63 @@
         </div>
 
         <!-- Main Menus Selection -->
-        <div id="menu-card" class="card interactive" style="margin-top: 40px; width: 90%; max-width: 750px; flex-grow: 0;">
-            <h1>Career Mode</h1>
-            <p style="color: #ccc; font-size: 13px; margin-bottom: 20px;">Complete stages sequentially to unlock rewards and premium races!</p>
-            
-            <!-- Stages List Container -->
-            <div id="stages-list" style="display: flex; flex-direction: column; gap: 12px; text-align: left; max-height: 380px; overflow-y: auto; padding-right: 5px;">
-                <!-- Stage Items will be populated programmatically by main.ts -->
+        <div id="menu-card" class="card interactive" style="margin-top: 40px; width: 90%; max-width: 750px; flex-grow: 0; pointer-events: auto;">
+            <!-- Tabs Headers -->
+            <div style="display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 20px;">
+                <button id="tab-career-btn" style="flex: 1; padding: 12px; background: none; border: none; font-size: 15px; font-weight: bold; border-bottom: 3px solid #ff3b30; color: #ff3b30; border-radius: 0; cursor: pointer;">CAREER MODE</button>
+                <button id="tab-multiplayer-btn" style="flex: 1; padding: 12px; background: none; border: none; font-size: 15px; font-weight: bold; color: #888; border-radius: 0; cursor: pointer;">MULTIPLAYER</button>
+            </div>
+
+            <!-- Career Tab Content -->
+            <div id="career-tab-content">
+                <p style="color: #ccc; font-size: 13px; margin-bottom: 20px;">Complete stages sequentially to unlock rewards and premium races!</p>
+                <!-- Stages List Container -->
+                <div id="stages-list" style="display: flex; flex-direction: column; gap: 12px; text-align: left; max-height: 380px; overflow-y: auto; padding-right: 5px;">
+                    <!-- Stage Items will be populated programmatically by main.ts -->
+                </div>
+            </div>
+
+            <!-- Multiplayer Tab Content -->
+            <div id="multiplayer-tab-content" style="display: none;">
+                <p style="color: #ccc; font-size: 13px; margin-bottom: 20px;">Race head-to-head with online players in private or public lobbies!</p>
+                
+                <!-- Profile Set -->
+                <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 20px; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 6px;">
+                    <div style="flex: 1;">
+                        <label style="font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: bold; display: block; margin-bottom: 5px;">Player Username</label>
+                        <input type="text" id="player-username" value="Guest Racer" style="width: 100%; background: #1a1a1a; border: 1px solid #444; border-radius: 4px; padding: 8px; color: #fff; font-weight: bold; font-family: monospace; font-size: 14px;">
+                    </div>
+                    <button id="create-room-btn" style="margin-top: 18px; padding: 10px 20px; font-size: 14px;">Create Match</button>
+                </div>
+
+                <div style="font-weight: bold; color: #ffffff; margin-bottom: 10px; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;">Active Matches</div>
+                <div id="lobbies-list" style="display: flex; flex-direction: column; gap: 10px; text-align: left; max-height: 220px; overflow-y: auto;">
+                    <!-- Lobbies will be populated programmatically -->
+                    <div style="color: #888; text-align: center; padding: 20px; font-style: italic;">No active match lobbies. Create one above!</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Room Lobby overlay card -->
+        <div id="room-lobby-card" class="card interactive" style="display: none; margin-top: 40px; width: 90%; max-width: 500px; padding: 25px; flex-grow: 0; pointer-events: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ff3b30; padding-bottom: 10px; margin-bottom: 20px;">
+                <h1 style="margin: 0; font-size: 24px;">MATCH LOBBY</h1>
+                <div style="font-family: monospace; font-weight: bold; font-size: 18px; color: #ffcc00; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; border: 1px solid #ffcc00;">
+                    ROOM: <span id="lobby-room-id">------</span>
+                </div>
+            </div>
+
+            <!-- Connected Players list -->
+            <div style="font-weight: bold; font-size: 12px; color: #aaa; text-transform: uppercase; text-align: left; margin-bottom: 8px;">Connected Drivers</div>
+            <div id="lobby-players-list" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px;">
+                <!-- Players rows programmatically inserted -->
+            </div>
+
+            <!-- Actions grid -->
+            <div style="display: flex; gap: 12px;">
+                <button id="lobby-ready-btn" style="flex: 1; padding: 12px; font-size: 15px;">READY</button>
+                <button id="lobby-start-btn" style="flex: 1; padding: 12px; font-size: 15px; display: none;" disabled>START RACE</button>
+                <button id="lobby-leave-btn" class="accent" style="padding: 12px; font-size: 15px; background: #ff3b30; border-color: #ff3b30;">LEAVE</button>
             </div>
         </div>
 

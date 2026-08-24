@@ -3,6 +3,7 @@ export enum SocketEvent {
   CREATE_ROOM = "client:create_room",
   JOIN_ROOM = "client:join_room",
   READY = "client:ready",
+  GET_ROOMS = "client:get_rooms",
   SELECT_VEHICLE = "client:select_vehicle",
   SELECT_TRACK = "client:select_track",
   PLAYER_INPUT = "client:player_input",
@@ -11,6 +12,7 @@ export enum SocketEvent {
 
   // Server events
   ROOM_CREATED = "server:room_created",
+  ROOMS_LIST = "server:rooms_list",
   ROOM_JOINED = "server:room_joined",
   PLAYER_JOINED = "server:player_joined",
   PLAYER_READY = "server:player_ready",
@@ -213,3 +215,16 @@ export const CAREER_STAGES: CareerStageConfig[] = [
     unlockCondition: "stage_3",
   },
 ];
+
+export interface RoomInfo {
+  roomId: string;
+  hostName: string;
+  playerCount: number;
+  maxPlayers: number;
+  status: "lobby" | "countdown" | "racing" | "finished";
+}
+
+export interface LobbyListPayload {
+  rooms: RoomInfo[];
+}
+
