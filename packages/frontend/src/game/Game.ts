@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import { Input } from "./Input";
 import { Track } from "./Track";
+import { Vehicle } from "./Vehicle";
+import { Car } from "./Car";
+import { Bike } from "./Bike";
+import { DEFAULT_VEHICLES } from "@racing-game/shared";
 
 export class Game {
   private container: HTMLElement;
@@ -12,12 +16,11 @@ export class Game {
 
   public input!: Input;
   public track!: Track;
-  private placeholderVehicle!: THREE.Group;
-  
-  // Driving stats for placeholder movement
-  private vehicleSpeed: number = 0;
-  private vehicleAngle: number = 0;
-  private vehiclePosition: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+
+  // Active Vehicle and vehicles mapping
+  public activeVehicle!: Vehicle;
+  private carInstance!: Car;
+  private bikeInstance!: Bike;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -39,7 +42,6 @@ export class Game {
       0.1,
       1000
     );
-    this.camera.position.set(0, 6, 12);
 
     // 3. Renderer setup
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -58,11 +60,14 @@ export class Game {
 
     // 6. Handle Window Resize
     window.addEventListener("resize", this.onWindowResize.bind(this));
+
+    // 7. Swap Vehicle Keyboard Listeners
+    window.addEventListener("keydown", this.onKeyDown.bind(this));
   }
 
   private initSceneObjects(): void {
     // 1. Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
     this.scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -80,7 +85,7 @@ export class Game {
     dirLight.shadow.bias = -0.0005;
     this.scene.add(dirLight);
 
-    // 2. Floor grid scenery (green ground)
+    // 2. Ground scenery
     const groundGeo = new THREE.PlaneGeometry(1000, 1000);
     const groundMat = new THREE.MeshStandardMaterial({
       color: 0x142016,
@@ -93,64 +98,50 @@ export class Game {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // 3. Winding Test Track
+    // 3. Track
     this.track = new Track(this.scene);
 
-    // 4. Placeholder Vehicle mesh (Red Arcade car style box + cylinders)
-    this.placeholderVehicle = new THREE.Group();
-    
-    // Chassis
-    const chassisGeo = new THREE.BoxGeometry(2, 0.6, 4.2);
-    const chassisMat = new THREE.MeshStandardMaterial({ color: 0xff3b30, roughness: 0.2, metalness: 0.8 });
-    const chassis = new THREE.Mesh(chassisGeo, chassisMat);
-    chassis.position.y = 0.5;
-    chassis.castShadow = true;
-    chassis.receiveShadow = true;
-    this.placeholderVehicle.add(chassis);
+    // 4. Instantiate Car and Bike vehicles
+    this.carInstance = new Car(DEFAULT_VEHICLES.starter_car, this.track);
+    this.bikeInstance = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
 
-    // Cabin
-    const cabinGeo = new THREE.BoxGeometry(1.4, 0.5, 2);
-    const cabinMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.1 });
-    const cabin = new THREE.Mesh(cabinGeo, cabinMat);
-    cabin.position.set(0, 1, -0.4);
-    cabin.castShadow = true;
-    this.placeholderVehicle.add(cabin);
+    // Default to Car
+    this.activeVehicle = this.carInstance;
+    this.scene.add(this.activeVehicle.mesh);
+  }
 
-    // Wheels (4 cylinders)
-    const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.4, 16);
-    wheelGeo.rotateZ(Math.PI / 2);
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+  private onKeyDown(e: KeyboardEvent): void {
+    if (e.code === "KeyC") {
+      this.switchVehicle(this.carInstance);
+    } else if (e.code === "KeyB") {
+      this.switchVehicle(this.bikeInstance);
+    }
+  }
 
-    const wheelPositions = [
-      new THREE.Vector3(-1.1, 0.45, 1.3),  // Front Left
-      new THREE.Vector3(1.1, 0.45, 1.3),   // Front Right
-      new THREE.Vector3(-1.1, 0.45, -1.3), // Rear Left
-      new THREE.Vector3(1.1, 0.45, -1.3),  // Rear Right
-    ];
+  private switchVehicle(targetVehicle: Vehicle): void {
+    if (this.activeVehicle === targetVehicle) return;
 
-    wheelPositions.forEach((pos) => {
-      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-      wheel.position.copy(pos);
-      wheel.castShadow = true;
-      this.placeholderVehicle.add(wheel);
-    });
+    console.log(`Swapping to: ${targetVehicle.config.name}`);
 
-    // Start vehicle at the beginning of the track curve
-    const startPoint = this.track.curve.getPointAt(0);
-    const tangent = this.track.curve.getTangentAt(0);
-    this.vehiclePosition.copy(startPoint);
-    this.placeholderVehicle.position.copy(this.vehiclePosition);
-    
-    // Look in direction of track curve tangent
-    const lookTarget = startPoint.clone().add(tangent);
-    this.placeholderVehicle.lookAt(lookTarget);
+    // Transfer physical momentum and kinematics seamlessly
+    targetVehicle.position.copy(this.activeVehicle.position);
+    targetVehicle.angle = this.activeVehicle.angle;
+    targetVehicle.speed = this.activeVehicle.speed;
+    targetVehicle.velocity.copy(this.activeVehicle.velocity);
 
-    this.scene.add(this.placeholderVehicle);
+    // Remove active and add new mesh to the scene
+    this.scene.remove(this.activeVehicle.mesh);
+    this.activeVehicle = targetVehicle;
+    this.scene.add(this.activeVehicle.mesh);
+
+    // Update mesh position immediately
+    this.activeVehicle.mesh.position.copy(targetVehicle.position);
+    this.activeVehicle.mesh.rotation.y = targetVehicle.angle;
   }
 
   private start(): void {
     this.isRunning = true;
-    this.clock.getDelta(); // reset clock delta
+    this.clock.getDelta();
     this.animate();
   }
 
@@ -162,7 +153,7 @@ export class Game {
     if (!this.isRunning) return;
     requestAnimationFrame(this.animate);
 
-    const deltaTime = Math.min(this.clock.getDelta(), 0.1); // clamp delta time to avoid large jumps
+    const deltaTime = Math.min(this.clock.getDelta(), 0.1);
 
     this.updatePhysics(deltaTime);
     this.updateCamera(deltaTime);
@@ -171,96 +162,45 @@ export class Game {
   };
 
   private updatePhysics(dt: number): void {
-    // Simple mock arcade movement using keyboard input
+    // Collect active input states
     const keys = this.input.keys;
-
-    // Acceleration & Braking
-    const maxSpeed = keys.nitro ? 60 : 35;
-    const accel = keys.nitro ? 20 : 12;
-    const friction = 2.5;
-
-    if (keys.accelerate) {
-      this.vehicleSpeed += accel * dt;
-    } else if (keys.brake) {
-      this.vehicleSpeed -= accel * 1.5 * dt;
-    } else {
-      // Natural deceleration / friction
-      if (this.vehicleSpeed > 0) {
-        this.vehicleSpeed = Math.max(0, this.vehicleSpeed - friction * dt);
-      } else if (this.vehicleSpeed < 0) {
-        this.vehicleSpeed = Math.min(0, this.vehicleSpeed + friction * dt);
-      }
-    }
-
-    // Clamp speed
-    this.vehicleSpeed = THREE.MathUtils.clamp(this.vehicleSpeed, -10, maxSpeed);
-
-    // Steering
-    const steerDir = this.input.getSteerValue();
-    const steerSpeed = keys.drift ? 2.5 : 1.8;
     
-    if (Math.abs(this.vehicleSpeed) > 1) {
-      const dirFactor = this.vehicleSpeed > 0 ? 1 : -1;
-      this.vehicleAngle -= steerDir * steerSpeed * dirFactor * dt;
-    }
-
-    // Calculate heading vector
-    const heading = new THREE.Vector3(
-      Math.sin(this.vehicleAngle),
-      0,
-      Math.cos(this.vehicleAngle)
-    ).normalize();
-
-    // Move vehicle mesh
-    this.vehiclePosition.add(heading.multiplyScalar(this.vehicleSpeed * dt));
-    
-    // Snap to ground Y (simple elevation snapping for bridge section)
-    const closestT = this.findClosestTrackT(this.vehiclePosition);
-    const trackPoint = this.track.curve.getPointAt(closestT);
-    this.vehiclePosition.y = trackPoint.y;
-
-    this.placeholderVehicle.position.copy(this.vehiclePosition);
-    this.placeholderVehicle.rotation.y = this.vehicleAngle;
-  }
-
-  // Helper to find closest point along track to snap Y position
-  private findClosestTrackT(pos: THREE.Vector3): number {
-    let closestT = 0;
-    let minDist = Infinity;
-    const steps = 100;
-    
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const point = this.track.curve.getPointAt(t);
-      const dist = pos.distanceTo(point);
-      if (dist < minDist) {
-        minDist = dist;
-        closestT = t;
-      }
-    }
-    
-    return closestT;
+    // Map Input states to update vehicle
+    this.activeVehicle.update(dt, {
+      accelerate: keys.accelerate,
+      brake: keys.brake,
+      steerLeft: keys.steerLeft,
+      steerRight: keys.steerRight,
+      nitro: keys.nitro,
+      drift: keys.drift,
+    });
   }
 
   private updateCamera(dt: number): void {
-    // Smooth chase camera behind the vehicle
+    const speedRatio = Math.abs(this.activeVehicle.speed) / this.activeVehicle.config.stats.topSpeed;
+
+    // Speed-based dynamic Field of View (FOV)
+    const baseFOV = 70;
+    const targetFOV = baseFOV + speedRatio * 15;
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFOV, 8 * dt);
+    this.camera.updateProjectionMatrix();
+
+    // Smooth chase camera positioning
     const targetOffset = new THREE.Vector3(
-      -Math.sin(this.placeholderVehicle.rotation.y) * 9,
-      4.5,
-      -Math.cos(this.placeholderVehicle.rotation.y) * 9
+      -Math.sin(this.activeVehicle.angle) * 8.5,
+      4.0,
+      -Math.cos(this.activeVehicle.angle) * 8.5
     );
 
-    const desiredCamPos = this.placeholderVehicle.position.clone().add(targetOffset);
-
-    // Interpolate camera position
+    const desiredCamPos = this.activeVehicle.position.clone().add(targetOffset);
     this.camera.position.lerp(desiredCamPos, 8 * dt);
 
-    // Look slightly ahead of the vehicle
-    const lookTarget = this.placeholderVehicle.position.clone().add(
+    // Camera points ahead of vehicle direction
+    const lookTarget = this.activeVehicle.position.clone().add(
       new THREE.Vector3(
-        Math.sin(this.placeholderVehicle.rotation.y) * 4,
-        1,
-        Math.cos(this.placeholderVehicle.rotation.y) * 4
+        Math.sin(this.activeVehicle.angle) * 4,
+        0.8,
+        Math.cos(this.activeVehicle.angle) * 4
       )
     );
     this.camera.lookAt(lookTarget);
@@ -275,7 +215,10 @@ export class Game {
   public destroy(): void {
     this.stop();
     window.removeEventListener("resize", this.onWindowResize.bind(this));
+    window.removeEventListener("keydown", this.onKeyDown.bind(this));
     this.track.destroy(this.scene);
+    this.carInstance.destroy(this.scene);
+    this.bikeInstance.destroy(this.scene);
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);
   }

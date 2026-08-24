@@ -110,3 +110,41 @@ export interface RoomJoinedPayload {
   roomId: string;
   players: { id: string; username: string; isReady: boolean }[];
 }
+
+export const DEFAULT_VEHICLES: Record<string, VehicleConfig> = {
+  starter_car: {
+    id: "starter_car",
+    name: "Apex Horizon",
+    type: "car",
+    stats: {
+      topSpeed: 38,
+      acceleration: 14,
+      braking: 18,
+      handling: 2.0,
+      grip: 0.85,
+      drift: 0.8,
+      nitro: 1.0,
+      weight: 1200,
+    },
+    unlockCost: 0,
+    upgradeCost: 500,
+  },
+  starter_bike: {
+    id: "starter_bike",
+    name: "Volt Raptor",
+    type: "bike",
+    stats: {
+      topSpeed: 35,
+      acceleration: 18,
+      braking: 22,
+      handling: 2.5,
+      grip: 0.75,
+      drift: 0.6,
+      nitro: 1.0,
+      weight: 350,
+    },
+    unlockCost: 0,
+    upgradeCost: 500,
+  },
+};
+
