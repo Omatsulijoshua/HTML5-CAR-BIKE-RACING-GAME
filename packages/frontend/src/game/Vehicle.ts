@@ -5,6 +5,8 @@ import { Track } from "./Track";
 export abstract class Vehicle {
   public mesh: THREE.Group;
   public config: VehicleConfig;
+  public driverName: string = "Player";
+  public isFinished: boolean = false;
   
   // Kinematic state
   public position: THREE.Vector3 = new THREE.Vector3();
