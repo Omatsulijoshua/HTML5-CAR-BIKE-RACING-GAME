@@ -1,0 +1,22 @@
+{
+  "name": "racing-game-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "packages/frontend",
+    "packages/backend"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace=@racing-game/shared",
+    "build:frontend": "npm run build --workspace=@racing-game/frontend",
+    "build:backend": "npm run build --workspace=@racing-game/backend",
+    "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
+    "dev:frontend": "npm run dev --workspace=@racing-game/frontend",
+    "dev:backend": "npm run dev --workspace=@racing-game/backend",
+    "start:backend": "npm run start --workspace=@racing-game/backend"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
