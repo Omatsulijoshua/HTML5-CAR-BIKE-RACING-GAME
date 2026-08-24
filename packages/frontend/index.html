@@ -137,6 +137,33 @@
         <div></div>
     </div>
 
+    <!-- Racing HUD Overlay -->
+    <div id="hud" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 15; pointer-events: none; padding: 25px; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);">
+        <!-- Top Stats Row -->
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+            <div id="hud-lap" style="font-size: 28px; color: #ff3b30; letter-spacing: 1px;">LAP 1/3</div>
+            <div id="hud-timer" style="font-size: 28px; color: #ffffff; font-family: monospace;">TIME: 0.0s</div>
+        </div>
+        
+        <!-- Center Banner Notification -->
+        <div style="position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%;">
+            <div id="hud-banner" style="font-size: 48px; color: #39ff14; letter-spacing: 3px; display: none; text-transform: uppercase;">CHECKPOINT!</div>
+        </div>
+
+        <!-- Bottom Row (Speed and Nitro status) -->
+        <div style="position: absolute; bottom: 25px; right: 25px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+            <div style="display: flex; align-items: baseline; gap: 5px;">
+                <div id="hud-speed" style="font-size: 44px; color: #ffffff;">0</div>
+                <div style="font-size: 16px; color: #888;">KM/H</div>
+            </div>
+            <!-- Nitro fuel bar -->
+            <div style="width: 150px; height: 10px; background: rgba(0,0,0,0.5); border: 1px solid #007aff; border-radius: 5px; overflow: hidden;">
+                <div id="hud-nitro-bar" style="width: 100%; height: 100%; background: #007aff; transition: width 0.1s;"></div>
+            </div>
+            <div style="font-size: 10px; color: #007aff; text-transform: uppercase;">Nitro</div>
+        </div>
+    </div>
+
     <!-- Mobile Touch Controls Overlay -->
     <div id="mobile-controls">
         <!-- Left Side: Steering -->

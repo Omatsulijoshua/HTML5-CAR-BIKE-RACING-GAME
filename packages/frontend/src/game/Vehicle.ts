@@ -13,6 +13,13 @@ export abstract class Vehicle {
   public angle: number = 0;
   public hasCollidedThisFrame: boolean = false;
 
+  // Lap & Checkpoint states
+  public currentLap: number = 1;
+  public lastCheckpointIndex: number = -1;
+
+  // Boost Pad state
+  public padBoostTime: number = 0;
+
   // Drift and Nitro state
   public isDrifting: boolean = false;
   public nitroFuel: number = 100;
@@ -59,8 +66,16 @@ export abstract class Vehicle {
     }
 
     // 2. Drive stats
-    const maxSpeed = this.isNitroActive ? stats.topSpeed * 1.4 : stats.topSpeed;
-    const accel = this.isNitroActive ? stats.acceleration * 1.8 : stats.acceleration;
+    let maxSpeed = this.isNitroActive ? stats.topSpeed * 1.4 : stats.topSpeed;
+    let accel = this.isNitroActive ? stats.acceleration * 1.8 : stats.acceleration;
+
+    if (this.padBoostTime > 0) {
+      this.padBoostTime = Math.max(0, this.padBoostTime - dt);
+      maxSpeed = stats.topSpeed * 1.7;
+      accel = stats.acceleration * 3.5;
+      this.speed = Math.max(this.speed, stats.topSpeed * 1.25);
+    }
+
     const brakePower = stats.braking;
     const friction = 3.0;
 
@@ -188,6 +203,18 @@ export abstract class Vehicle {
         this.speed = 0;
       }
     }
+  }
+
+  public respawn(respawnPos: THREE.Vector3, tangent: THREE.Vector3): void {
+    this.position.copy(respawnPos);
+    this.angle = Math.atan2(tangent.x, tangent.z);
+    this.speed = 0;
+    this.velocity.set(0, 0, 0);
+    this.isDrifting = false;
+    this.padBoostTime = 0;
+    
+    this.mesh.position.copy(this.position);
+    this.mesh.rotation.set(0, this.angle, 0);
   }
 
   public destroy(scene: THREE.Scene): void {
