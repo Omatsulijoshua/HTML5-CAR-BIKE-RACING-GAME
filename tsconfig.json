@@ -7,13 +7,6 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "composite": true,
     "declaration": true
-  },
-  "files": [],
-  "references": [
-    { "path": "./packages/shared" },
-    { "path": "./packages/backend" },
-    { "path": "./packages/frontend" }
-  ]
+  }
 }

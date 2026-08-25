@@ -6,18 +6,14 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
-    "composite": true,
     "declaration": true,
     "declarationMap": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@racing-game/shared": ["../shared/src/index.ts"]
+      "@racing-game/shared": ["../shared/dist/index.d.ts"]
     }
   },
-  "include": ["src/**/*"],
-  "references": [
-    { "path": "../shared" }
-  ]
+  "include": ["src/**/*"]
 }
