@@ -31,6 +31,16 @@ interface PlayerInfo {
   username: string;
   isReady: boolean;
   vehicleId: string;
+  state?: {
+    x: number;
+    y: number;
+    z: number;
+    angle: number;
+    speed: number;
+    isNitroActive: boolean;
+    isDrifting: boolean;
+    vehicleId: string;
+  };
 }
 
 interface RoomData {
@@ -55,10 +65,34 @@ function broadcastLobbyList(): void {
   io.emit(SocketEvent.ROOMS_LIST, { rooms: list });
 }
 
+// Start 30Hz Server Broadcast Loop
+setInterval(() => {
+  for (const roomId of Object.keys(rooms)) {
+    const room = rooms[roomId];
+    if (room.status === "racing") {
+      // Compile states of all players in the active race
+      const states = room.players.map((p) => ({
+        id: p.id,
+        username: p.username,
+        x: p.state?.x ?? 0,
+        y: p.state?.y ?? 0,
+        z: p.state?.z ?? 0,
+        angle: p.state?.angle ?? 0,
+        speed: p.state?.speed ?? 0,
+        isNitroActive: p.state?.isNitroActive ?? false,
+        isDrifting: p.state?.isDrifting ?? false,
+        vehicleId: p.state?.vehicleId ?? "starter_car",
+      }));
+
+      io.to(roomId).emit(SocketEvent.GAME_STATE, { players: states });
+    }
+  }
+}, 33); // ~30Hz frequency
+
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // 1. Get Rooms List
+  // 1. Get Lobbies
   socket.on(SocketEvent.GET_ROOMS, () => {
     const list = Object.values(rooms).map((r) => ({
       roomId: r.roomId,
@@ -83,7 +117,7 @@ io.on("connection", (socket) => {
         {
           id: socket.id,
           username: data.username || "Guest Host",
-          isReady: true, // host is ready by default
+          isReady: true,
           vehicleId: "starter_car",
         },
       ],
@@ -141,7 +175,6 @@ io.on("connection", (socket) => {
     room.players.push(newPlayer);
     socket.join(roomId);
 
-    // Reply success to the joiner
     socket.emit(SocketEvent.ROOM_JOINED, {
       success: true,
       roomId,
@@ -149,7 +182,6 @@ io.on("connection", (socket) => {
       players: room.players,
     });
 
-    // Notify other members
     socket.to(roomId).emit(SocketEvent.PLAYER_JOINED, {
       player: newPlayer,
       players: room.players,
@@ -158,9 +190,8 @@ io.on("connection", (socket) => {
     broadcastLobbyList();
   });
 
-  // 4. Toggle Ready
+  // 4. Toggle Ready status
   socket.on(SocketEvent.READY, () => {
-    // Find room of player
     let playerRoom: RoomData | null = null;
     let playerInfo: PlayerInfo | null = null;
 
@@ -174,12 +205,10 @@ io.on("connection", (socket) => {
     }
 
     if (playerRoom && playerInfo) {
-      // Toggle readiness (hosts are always ready, guests toggle)
       if (playerRoom.hostId !== socket.id) {
         playerInfo.isReady = !playerInfo.isReady;
       }
       
-      console.log(`User ${socket.id} toggled ready status to: ${playerInfo.isReady}`);
       io.to(playerRoom.roomId).emit(SocketEvent.PLAYER_READY, {
         playerId: socket.id,
         isReady: playerInfo.isReady,
@@ -188,12 +217,70 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 5. Leave Room
+  // 5. Host Triggers Match Start (countdown)
+  socket.on(SocketEvent.SELECT_TRACK, (data: { roomId: string }) => {
+    const roomId = (data.roomId || "").toUpperCase();
+    const room = rooms[roomId];
+
+    if (room && room.hostId === socket.id && room.status === "lobby") {
+      // Set to countdown phase
+      room.status = "countdown";
+      broadcastLobbyList();
+
+      console.log(`Host ${socket.id} started match for room: ${roomId}`);
+      io.to(roomId).emit(SocketEvent.RACE_STARTING, { players: room.players });
+
+      // Count down on server: 3 seconds to release inputs
+      setTimeout(() => {
+        if (rooms[roomId]) {
+          rooms[roomId].status = "racing";
+          io.to(roomId).emit(SocketEvent.RACE_STARTED);
+          console.log(`Race started for room: ${roomId}`);
+        }
+      }, 3000);
+    }
+  });
+
+  // 6. Client Broadcasts Real-time Coordinates state
+  socket.on(
+    SocketEvent.PLAYER_INPUT,
+    (data: {
+      roomId: string;
+      x: number;
+      y: number;
+      z: number;
+      angle: number;
+      speed: number;
+      isNitroActive: boolean;
+      isDrifting: boolean;
+      vehicleId: string;
+    }) => {
+      const roomId = (data.roomId || "").toUpperCase();
+      const room = rooms[roomId];
+      if (!room || room.status !== "racing") return;
+
+      const player = room.players.find((p) => p.id === socket.id);
+      if (player) {
+        player.state = {
+          x: data.x,
+          y: data.y,
+          z: data.z,
+          angle: data.angle,
+          speed: data.speed,
+          isNitroActive: data.isNitroActive,
+          isDrifting: data.isDrifting,
+          vehicleId: data.vehicleId,
+        };
+      }
+    }
+  );
+
+  // 7. Leave Room
   socket.on(SocketEvent.LEAVE_ROOM, () => {
     handlePlayerLeave(socket.id);
   });
 
-  // 6. Handle Disconnection
+  // 8. Disconnect
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
     handlePlayerLeave(socket.id);
@@ -205,18 +292,15 @@ io.on("connection", (socket) => {
       const index = room.players.findIndex((p) => p.id === playerId);
 
       if (index !== -1) {
-        // Remove player from room
         room.players.splice(index, 1);
         socket.leave(roomId);
 
         console.log(`User ${playerId} left room: ${roomId}`);
 
         if (room.hostId === playerId) {
-          // Host left! Terminate room
           console.log(`Host left. Closing room: ${roomId}`);
           io.to(roomId).emit(SocketEvent.ROOM_CLOSED, { roomId });
-          
-          // Force all remaining socket clients in room to leave
+
           const roomSockets = io.sockets.adapter.rooms.get(roomId);
           if (roomSockets) {
             for (const socketId of roomSockets) {
@@ -227,7 +311,6 @@ io.on("connection", (socket) => {
 
           delete rooms[roomId];
         } else {
-          // Notify other players
           io.to(roomId).emit(SocketEvent.PLAYER_DISCONNECTED, {
             playerId,
             players: room.players,
@@ -235,7 +318,7 @@ io.on("connection", (socket) => {
         }
 
         broadcastLobbyList();
-        break; // socket can only be in 1 room at a time
+        break;
       }
     }
   }

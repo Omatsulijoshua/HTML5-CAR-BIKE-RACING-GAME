@@ -9,6 +9,11 @@ export abstract class Vehicle {
   public driverName: string = "Player";
   public isFinished: boolean = false;
   public finishTime: number = 0;
+
+  // Network sync states
+  public isNetworkControlled: boolean = false;
+  public networkTargetPosition: THREE.Vector3 = new THREE.Vector3();
+  public networkTargetAngle: number = 0;
   
   // Kinematic state
   public position: THREE.Vector3 = new THREE.Vector3();
@@ -59,6 +64,21 @@ export abstract class Vehicle {
       drift: boolean;
     }
   ): void {
+    if (this.isNetworkControlled) {
+      this.position.lerp(this.networkTargetPosition, 12 * dt);
+      
+      let diff = this.networkTargetAngle - this.angle;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      this.angle += diff * 12 * dt;
+
+      this.mesh.position.copy(this.position);
+      this.mesh.rotation.y = this.angle;
+      
+      this.updateVisualRotation(dt, 0);
+      return;
+    }
+
     const stats = this.config.stats;
     
     // 1. Handle Nitro

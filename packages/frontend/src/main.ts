@@ -1,12 +1,12 @@
 import { Game } from "./game/Game";
 import { SaveSystem } from "./game/SaveSystem";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 import { CAREER_STAGES, CareerStageConfig, SocketEvent, RoomInfo } from "@racing-game/shared";
 
 console.log("Bootstrapping Racing Game...");
 
 // 1. Initialize Socket.IO Client
-const socket = io("http://localhost:3001", {
+const socket: Socket = io("http://localhost:3001", {
   autoConnect: true,
   reconnectionAttempts: 5,
 });
@@ -196,66 +196,78 @@ function refreshMenuDashboard(): void {
   }
 }
 
-// 6. Start Single-Player Race
-function startRace(stage: CareerStageConfig): void {
+// 6. Start Race (supports Single Player & Multiplayer)
+function startRace(
+  stage: CareerStageConfig,
+  socketInstance?: Socket,
+  roomId?: string,
+  playersList?: any[]
+): void {
   const menuCard = document.getElementById("menu-card");
   if (menuCard) menuCard.style.display = "none";
   
-  console.log(`Starting Career stage: ${stage.name}`);
+  console.log(`Starting race: ${stage.name}. Multiplayer? ${!!socketInstance}`);
   
   if (game) {
     game.destroy();
   }
 
-  game = new Game(container, stage, (results) => {
-    game?.destroy();
-    game = null;
-    
-    const hud = document.getElementById("hud");
-    if (hud) hud.style.display = "none";
-    
-    // Draw detailed standings row table
-    const rowsContainer = document.getElementById("results-standings-rows")!;
-    if (rowsContainer) {
-      rowsContainer.innerHTML = "";
-      results.standingsList.forEach((entry, idx) => {
-        const row = document.createElement("tr");
-        row.style.borderBottom = "1px solid rgba(255,255,255,0.06)";
-        if (entry.isPlayer) {
-          row.style.color = "#39ff14";
-          row.style.fontWeight = "bold";
-        }
-        row.innerHTML = `
-          <td style="padding: 6px 4px;">${idx + 1}</td>
-          <td style="padding: 6px 4px;">${entry.name}</td>
-          <td style="padding: 6px 4px; text-transform: uppercase;">${entry.vehicleName}</td>
-          <td style="padding: 6px 4px; text-align: right;">${entry.finishTime.toFixed(2)}s</td>
-        `;
-        rowsContainer.appendChild(row);
-      });
-    }
-
-    const popup = document.getElementById("results-popup");
-    const header = document.getElementById("results-header");
-    const coinsTxt = document.getElementById("reward-coins");
-    const xpTxt = document.getElementById("reward-xp");
-    const alert = document.getElementById("levelup-alert");
-
-    if (popup) popup.style.display = "block";
-    if (header) {
-      if (results.standing === 1) {
-        header.textContent = "1st PLACE!";
-        header.style.color = "#39ff14";
-      } else {
-        const suffix = results.standing === 2 ? "2nd" : results.standing === 3 ? "3rd" : `${results.standing}th`;
-        header.textContent = `${suffix} Place`;
-        header.style.color = "#ffcc00";
+  game = new Game(
+    container,
+    stage,
+    (results) => {
+      game?.destroy();
+      game = null;
+      
+      const hud = document.getElementById("hud");
+      if (hud) hud.style.display = "none";
+      
+      // Draw detailed standings row table
+      const rowsContainer = document.getElementById("results-standings-rows")!;
+      if (rowsContainer) {
+        rowsContainer.innerHTML = "";
+        results.standingsList.forEach((entry, idx) => {
+          const row = document.createElement("tr");
+          row.style.borderBottom = "1px solid rgba(255,255,255,0.06)";
+          if (entry.isPlayer) {
+            row.style.color = "#39ff14";
+            row.style.fontWeight = "bold";
+          }
+          row.innerHTML = `
+            <td style="padding: 6px 4px;">${idx + 1}</td>
+            <td style="padding: 6px 4px;">${entry.name}</td>
+            <td style="padding: 6px 4px; text-transform: uppercase;">${entry.vehicleName}</td>
+            <td style="padding: 6px 4px; text-align: right;">${entry.finishTime.toFixed(2)}s</td>
+          `;
+          rowsContainer.appendChild(row);
+        });
       }
-    }
-    if (coinsTxt) coinsTxt.textContent = `+${results.coins}`;
-    if (xpTxt) xpTxt.textContent = `+${results.xp}`;
-    if (alert) alert.style.display = results.levelUp ? "block" : "none";
-  });
+
+      const popup = document.getElementById("results-popup");
+      const header = document.getElementById("results-header");
+      const coinsTxt = document.getElementById("reward-coins");
+      const xpTxt = document.getElementById("reward-xp");
+      const alertLabel = document.getElementById("levelup-alert");
+
+      if (popup) popup.style.display = "block";
+      if (header) {
+        if (results.standing === 1) {
+          header.textContent = "1st PLACE!";
+          header.style.color = "#39ff14";
+        } else {
+          const suffix = results.standing === 2 ? "2nd" : results.standing === 3 ? "3rd" : `${results.standing}th`;
+          header.textContent = `${suffix} Place`;
+          header.style.color = "#ffcc00";
+        }
+      }
+      if (coinsTxt) coinsTxt.textContent = `+${results.coins}`;
+      if (xpTxt) xpTxt.textContent = `+${results.xp}`;
+      if (alertLabel) alertLabel.style.display = results.levelUp ? "block" : "none";
+    },
+    socketInstance,
+    roomId,
+    playersList
+  );
   
   (window as any).game = game;
 }
@@ -377,11 +389,54 @@ socket.on(SocketEvent.PLAYER_DISCONNECTED, (data: { playerId: string; players: a
 });
 
 socket.on(SocketEvent.ROOM_CLOSED, () => {
-  alert("Lobby room was closed by the host.");
-  exitLobbyUI();
+  // If we are currently inside an active race, Game.ts handles cleanup and triggers lobby transition
+  if (!game) {
+    alert("Lobby room was closed by the host.");
+    exitLobbyUI();
+  }
 });
 
-// 9. Lobby UI helpers
+// 9. Multiplayer Countdown Sync Handlers
+socket.on(SocketEvent.RACE_STARTING, (data: { players: any[] }) => {
+  console.log("Server initiated starting grid countdown!");
+  const activeRoomId = document.getElementById("lobby-room-id")!.textContent || "";
+
+  // Hide the Lobby UI popup
+  document.getElementById("room-lobby-card")!.style.display = "none";
+
+  // Boot the multiplayer race scene (stage settings stage 1)
+  startRace(CAREER_STAGES[0], socket, activeRoomId, data.players);
+
+  // Sync a local 3-second visual countdown to align with server start triggers
+  runMultiplayerVisualCountdown();
+});
+
+socket.on(SocketEvent.RACE_STARTED, () => {
+  console.log("Server released starting gates! Throttle unlocked.");
+  if (game && game.raceStarted === false) {
+    game.startRaceNow();
+  }
+});
+
+function runMultiplayerVisualCountdown(): void {
+  const spawnNumber = (txt: string) => {
+    const el = document.createElement("div");
+    el.className = "countdown-number";
+    el.textContent = txt;
+    document.body.appendChild(el);
+    
+    setTimeout(() => {
+      el.remove();
+    }, 980);
+  };
+
+  // Tick sequences
+  spawnNumber("3");
+  setTimeout(() => spawnNumber("2"), 1000);
+  setTimeout(() => spawnNumber("1"), 2000);
+}
+
+// 10. Lobby UI helpers
 function showLobby(roomId: string, players: any[]): void {
   document.getElementById("menu-card")!.style.display = "none";
   
@@ -468,7 +523,7 @@ function exitLobbyUI(): void {
   refreshMenuDashboard();
 }
 
-// 10. Match Lobby Button Click Handlers
+// 11. Match Lobby Button Click Handlers
 const readyBtn = document.getElementById("lobby-ready-btn")!;
 const leaveBtn = document.getElementById("lobby-leave-btn")!;
 const startBtn = document.getElementById("lobby-start-btn")!;
@@ -492,9 +547,9 @@ leaveBtn.addEventListener("click", () => {
 
 startBtn.addEventListener("click", () => {
   if (isHost) {
-    console.log("Host triggered match start. Booting track circuit...");
-    document.getElementById("room-lobby-card")!.style.display = "none";
-    startRace(CAREER_STAGES[0]);
+    const activeRoomId = document.getElementById("lobby-room-id")!.textContent || "";
+    console.log(`Host triggered start for room: ${activeRoomId}`);
+    socket.emit(SocketEvent.SELECT_TRACK, { roomId: activeRoomId });
   }
 });
 

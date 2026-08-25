@@ -8,7 +8,8 @@ import { AIController } from "./AIController";
 import { SaveSystem } from "./SaveSystem";
 import { AudioSystem } from "./AudioSystem";
 import { ParticleSystem } from "./ParticleSystem";
-import { DEFAULT_VEHICLES, CareerStageConfig } from "@racing-game/shared";
+import { DEFAULT_VEHICLES, CareerStageConfig, SocketEvent } from "@racing-game/shared";
+import { Socket } from "socket.io-client";
 
 export interface RaceStandingEntry {
   name: string;
@@ -37,6 +38,12 @@ export class Game {
   private aiControllers: AIController[] = [];
   public allVehicles: Vehicle[] = [];
 
+  // Multiplayer network states
+  private socket?: Socket;
+  private roomId?: string;
+  private isMultiplayer: boolean = false;
+  private remotePlayers: Map<string, Vehicle> = new Map();
+
   // Audio and VFX Particle Systems
   private audioSystem!: AudioSystem;
   private particleSystem!: ParticleSystem;
@@ -54,7 +61,7 @@ export class Game {
     levelUp: boolean;
     standingsList: RaceStandingEntry[];
   }) => void;
-  private raceStarted: boolean = false;
+  public raceStarted: boolean = false;
   private raceFinished: boolean = false;
   private raceTime: number = 0;
   private totalLaps: number = 3;
@@ -78,19 +85,32 @@ export class Game {
       xp: number;
       levelUp: boolean;
       standingsList: RaceStandingEntry[];
-    }) => void
+    }) => void,
+    socket?: Socket,
+    roomId?: string,
+    playersList?: any[]
   ) {
     this.container = container;
     this.stageConfig = stageConfig;
     this.onCompleteCallback = onCompleteCallback;
     this.totalLaps = stageConfig.laps;
 
+    this.socket = socket;
+    this.roomId = roomId;
+    this.isMultiplayer = !!(socket && roomId && playersList);
+
     this.initThree();
-    this.initSceneObjects();
+    this.initSceneObjects(playersList);
     this.initAudioAndVFX();
     this.initHUD();
     this.start();
-    this.runStartCountdown();
+
+    // If multiplayer, start countdown is driven by server events
+    if (!this.isMultiplayer) {
+      this.runStartCountdown();
+    } else {
+      this.setupMultiplayerListeners();
+    }
   }
 
   private initThree(): void {
@@ -123,7 +143,7 @@ export class Game {
     window.addEventListener("keydown", this.onKeyDown.bind(this));
   }
 
-  private initSceneObjects(): void {
+  private initSceneObjects(playersList?: any[]): void {
     // 1. Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
     this.scene.add(ambientLight);
@@ -143,7 +163,7 @@ export class Game {
     dirLight.shadow.bias = -0.0005;
     this.scene.add(dirLight);
 
-    // 2. Ground plane
+    // 2. Ground scenery
     const groundGeo = new THREE.PlaneGeometry(1000, 1000);
     const groundMat = new THREE.MeshStandardMaterial({
       color: 0x142016,
@@ -159,80 +179,139 @@ export class Game {
     // 3. Track
     this.track = new Track(this.scene);
 
-    // 4. Instantiate Car and Bike (Player)
-    this.carInstance = new Car(DEFAULT_VEHICLES.starter_car, this.track);
-    this.carInstance.driverName = "PLAYER (YOU)";
-    this.bikeInstance = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
-    this.bikeInstance.driverName = "PLAYER (YOU)";
-
-    this.activeVehicle = this.carInstance;
-    this.scene.add(this.activeVehicle.mesh);
-
-    // 5. Grid start positions
+    // 4. Grid orientation vectors
     const startT = 0;
     const startPoint = this.track.curve.getPointAt(startT);
     const tangent = this.track.curve.getTangentAt(startT);
     const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
     const headingAngle = Math.atan2(tangent.x, tangent.z);
 
-    this.activeVehicle.position.copy(startPoint);
-    this.activeVehicle.mesh.position.copy(startPoint);
-    this.activeVehicle.angle = headingAngle;
-    this.activeVehicle.mesh.rotation.y = headingAngle;
+    if (this.isMultiplayer && playersList && this.socket) {
+      // Setup MULTIPLAYER layout
+      console.log("Setting up multiplayer starting grid slots...");
+      
+      const localIndex = playersList.findIndex((p) => p.id === this.socket?.id);
+      
+      // Local player vehicle instantiation
+      this.carInstance = new Car(DEFAULT_VEHICLES.starter_car, this.track);
+      this.carInstance.driverName = "PLAYER (YOU)";
+      this.bikeInstance = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
+      this.bikeInstance.driverName = "PLAYER (YOU)";
 
-    this.allVehicles = [this.activeVehicle];
+      this.activeVehicle = this.carInstance;
+      this.scene.add(this.activeVehicle.mesh);
 
-    // 6. Spawn AI Opponents dynamically
-    const aiCount = this.stageConfig.aiCount;
-    for (let i = 0; i < aiCount; i++) {
-      const difficulty = this.stageConfig.aiDifficulties[i] || "normal";
-      let aiVehicle: Vehicle;
+      // Positioning local player based on room index
+      const gridOffset = -(5.0 + localIndex * 5.0);
+      const laneOffset = localIndex % 2 === 0 ? 2.2 : -2.2;
+      const playerPos = startPoint.clone().add(normal.clone().multiplyScalar(laneOffset)).addScaledVector(tangent, gridOffset);
 
-      if (i % 2 === 0) {
-        aiVehicle = new Car(DEFAULT_VEHICLES.starter_car, this.track);
-        aiVehicle.driverName = `Volt Viper ${i + 1} (AI)`;
-        const chassis = aiVehicle.mesh.children[0] as THREE.Mesh;
-        if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
-          const mat = chassis.material.clone();
-          mat.color.setHex(0xffcc00); // Yellow
-          chassis.material = mat;
+      this.activeVehicle.position.copy(playerPos);
+      this.activeVehicle.mesh.position.copy(playerPos);
+      this.activeVehicle.angle = headingAngle;
+      this.activeVehicle.mesh.rotation.y = headingAngle;
+
+      this.allVehicles = [this.activeVehicle];
+
+      // Spawn remote human players
+      playersList.forEach((player, idx) => {
+        if (player.id !== this.socket?.id) {
+          console.log(`Spawning remote vehicle for player: ${player.username}`);
+          
+          // Remote vehicle model matching vehicleId
+          const remoteVeh = new Car(DEFAULT_VEHICLES.starter_car, this.track);
+          remoteVeh.driverName = `${player.username}`;
+          remoteVeh.isNetworkControlled = true;
+
+          // Alternate paint colors for remote players
+          const chassis = remoteVeh.mesh.children[0] as THREE.Mesh;
+          if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
+            const mat = chassis.material.clone();
+            mat.color.setHex(idx % 2 === 0 ? 0xff00ff : 0x00ffff); // Purple vs Cyan
+            chassis.material = mat;
+          }
+
+          const remGridOffset = -(5.0 + idx * 5.0);
+          const remLaneOffset = idx % 2 === 0 ? 2.2 : -2.2;
+          const remPos = startPoint.clone().add(normal.clone().multiplyScalar(remLaneOffset)).addScaledVector(tangent, remGridOffset);
+
+          remoteVeh.position.copy(remPos);
+          remoteVeh.mesh.position.copy(remPos);
+          remoteVeh.angle = headingAngle;
+          remoteVeh.mesh.rotation.y = headingAngle;
+
+          this.scene.add(remoteVeh.mesh);
+          this.remotePlayers.set(player.id, remoteVeh);
+          this.allVehicles.push(remoteVeh);
         }
-      } else {
-        aiVehicle = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
-        aiVehicle.driverName = `Apex Specter ${i + 1} (AI)`;
-        const chassis = aiVehicle.mesh.children[0] as THREE.Mesh;
-        if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
-          const mat = chassis.material.clone();
-          mat.color.setHex(0x39ff14); // Green
-          chassis.material = mat;
+      });
+
+    } else {
+      // Setup SINGLE-PLAYER layout
+      this.carInstance = new Car(DEFAULT_VEHICLES.starter_car, this.track);
+      this.carInstance.driverName = "PLAYER (YOU)";
+      this.bikeInstance = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
+      this.bikeInstance.driverName = "PLAYER (YOU)";
+
+      this.activeVehicle = this.carInstance;
+      this.scene.add(this.activeVehicle.mesh);
+
+      this.activeVehicle.position.copy(startPoint);
+      this.activeVehicle.mesh.position.copy(startPoint);
+      this.activeVehicle.angle = headingAngle;
+      this.activeVehicle.mesh.rotation.y = headingAngle;
+
+      this.allVehicles = [this.activeVehicle];
+
+      // Spawn AI opponents
+      const aiCount = this.stageConfig.aiCount;
+      for (let i = 0; i < aiCount; i++) {
+        const difficulty = this.stageConfig.aiDifficulties[i] || "normal";
+        let aiVehicle: Vehicle;
+
+        if (i % 2 === 0) {
+          aiVehicle = new Car(DEFAULT_VEHICLES.starter_car, this.track);
+          aiVehicle.driverName = `Volt Viper ${i + 1} (AI)`;
+          const chassis = aiVehicle.mesh.children[0] as THREE.Mesh;
+          if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
+            const mat = chassis.material.clone();
+            mat.color.setHex(0xffcc00); // Yellow
+            chassis.material = mat;
+          }
+        } else {
+          aiVehicle = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
+          aiVehicle.driverName = `Apex Specter ${i + 1} (AI)`;
+          const chassis = aiVehicle.mesh.children[0] as THREE.Mesh;
+          if (chassis && chassis.material instanceof THREE.MeshStandardMaterial) {
+            const mat = chassis.material.clone();
+            mat.color.setHex(0x39ff14); // Green
+            chassis.material = mat;
+          }
         }
+
+        const gridOffset = -(5.0 + i * 5.0);
+        const laneOffset = i % 2 === 0 ? 2.2 : -2.2;
+        const aiPos = startPoint.clone().add(normal.clone().multiplyScalar(laneOffset)).addScaledVector(tangent, gridOffset);
+
+        aiVehicle.position.copy(aiPos);
+        aiVehicle.mesh.position.copy(aiPos);
+        aiVehicle.angle = headingAngle;
+        aiVehicle.mesh.rotation.y = headingAngle;
+
+        this.scene.add(aiVehicle.mesh);
+        this.allVehicles.push(aiVehicle);
+
+        this.aiControllers.push(new AIController(aiVehicle, this.track, difficulty));
       }
-
-      const gridOffset = -(5.0 + i * 5.0);
-      const laneOffset = i % 2 === 0 ? 2.2 : -2.2;
-      const aiPos = startPoint.clone().add(normal.clone().multiplyScalar(laneOffset)).addScaledVector(tangent, gridOffset);
-
-      aiVehicle.position.copy(aiPos);
-      aiVehicle.mesh.position.copy(aiPos);
-      aiVehicle.angle = headingAngle;
-      aiVehicle.mesh.rotation.y = headingAngle;
-
-      this.scene.add(aiVehicle.mesh);
-      this.allVehicles.push(aiVehicle);
-
-      // Create AI controller
-      this.aiControllers.push(new AIController(aiVehicle, this.track, difficulty));
     }
   }
 
   private initAudioAndVFX(): void {
-    // 1. Audio System setup
     this.audioSystem = new AudioSystem();
 
     const triggerAudioInit = () => {
       this.audioSystem.init();
       this.audioSystem.resume();
-      // Remove listeners once active
       window.removeEventListener("click", triggerAudioInit);
       window.removeEventListener("keydown", triggerAudioInit);
     };
@@ -240,7 +319,6 @@ export class Game {
     window.addEventListener("click", triggerAudioInit);
     window.addEventListener("keydown", triggerAudioInit);
 
-    // 2. Particle System setup
     this.particleSystem = new ParticleSystem(this.scene);
   }
 
@@ -256,6 +334,53 @@ export class Game {
     if (this.hudElement) {
       this.hudElement.style.display = "block";
     }
+  }
+
+  private setupMultiplayerListeners(): void {
+    if (!this.socket) return;
+
+    // Listen to real-time broadcast states
+    this.socket.on(SocketEvent.GAME_STATE, (data: { players: any[] }) => {
+      data.players.forEach((player) => {
+        if (player.id !== this.socket?.id) {
+          const remoteVeh = this.remotePlayers.get(player.id);
+          if (remoteVeh) {
+            // Update interpolation network targets
+            remoteVeh.networkTargetPosition.set(player.x, player.y, player.z);
+            remoteVeh.networkTargetAngle = player.angle;
+            
+            // Set sync inputs
+            remoteVeh.speed = player.speed;
+            remoteVeh.isNitroActive = player.isNitroActive;
+            remoteVeh.isDrifting = player.isDrifting;
+          }
+        }
+      });
+    });
+
+    // Listen to unexpected disconnect closures
+    this.socket.on(SocketEvent.ROOM_CLOSED, () => {
+      this.stop();
+      alert("Host left the match. Closing race...");
+      this.onCompleteCallback({
+        standing: 1,
+        coins: 0,
+        xp: 0,
+        levelUp: false,
+        standingsList: [],
+      });
+    });
+  }
+
+  public startRaceNow(): void {
+    this.raceStarted = true;
+    
+    // Spawn "GO!" text overlay
+    const el = document.createElement("div");
+    el.className = "countdown-number";
+    el.textContent = "GO!";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 980);
   }
 
   private runStartCountdown(): void {
@@ -276,8 +401,7 @@ export class Game {
     setTimeout(() => spawnNumber("2"), 1000);
     setTimeout(() => spawnNumber("1"), 2000);
     setTimeout(() => {
-      spawnNumber("GO!");
-      this.raceStarted = true;
+      this.startRaceNow();
     }, 3000);
   }
 
@@ -289,9 +413,9 @@ export class Game {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (e.code === "KeyC" && !this.raceFinished) {
+    if (e.code === "KeyC" && !this.raceFinished && !this.isMultiplayer) {
       this.switchVehicle(this.carInstance);
-    } else if (e.code === "KeyB" && !this.raceFinished) {
+    } else if (e.code === "KeyB" && !this.raceFinished && !this.isMultiplayer) {
       this.switchVehicle(this.bikeInstance);
     } else if (e.code === "KeyR" && !this.raceFinished) {
       this.respawnActiveVehicle();
@@ -303,7 +427,6 @@ export class Game {
 
     console.log(`Swapping to: ${targetVehicle.config.name}`);
 
-    // Transfer momentum
     targetVehicle.position.copy(this.activeVehicle.position);
     targetVehicle.angle = this.activeVehicle.angle;
     targetVehicle.speed = this.activeVehicle.speed;
@@ -313,7 +436,6 @@ export class Game {
     targetVehicle.padBoostTime = this.activeVehicle.padBoostTime;
     targetVehicle.nitroFuel = this.activeVehicle.nitroFuel;
 
-    // Swap meshes
     this.scene.remove(this.activeVehicle.mesh);
     this.activeVehicle = targetVehicle;
     this.scene.add(this.activeVehicle.mesh);
@@ -402,23 +524,68 @@ export class Game {
 
     this.track.updateObstacles(dt);
 
-    // Drive AIs
-    this.aiControllers.forEach((ai) => {
-      if (ai.vehicle.isFinished) {
-        ai.vehicle.update(dt, {
+    if (this.isMultiplayer) {
+      // 1. Emit spatial coordinates to server (30Hz tick rate updates)
+      if (this.socket && this.roomId && !this.raceFinished) {
+        this.socket.emit(SocketEvent.PLAYER_INPUT, {
+          roomId: this.roomId,
+          x: this.activeVehicle.position.x,
+          y: this.activeVehicle.position.y,
+          z: this.activeVehicle.position.z,
+          angle: this.activeVehicle.angle,
+          speed: this.activeVehicle.speed,
+          isNitroActive: this.activeVehicle.isNitroActive,
+          isDrifting: this.activeVehicle.isDrifting,
+          vehicleId: this.activeVehicle.config.id,
+        });
+      }
+
+      // 2. Drive remote human meshes using interpolation LERP inside Vehicle update
+      this.remotePlayers.forEach((remoteVeh) => {
+        remoteVeh.update(dt, {
           accelerate: false,
-          brake: true,
+          brake: false,
           steerLeft: false,
           steerRight: false,
-          nitro: false,
-          drift: false,
+          nitro: remoteVeh.isNitroActive,
+          drift: remoteVeh.isDrifting,
         });
-      } else {
-        ai.update(dt);
-      }
-    });
 
-    // Drive Player
+        // Spawn VFX Particles for remote opponents!
+        if (remoteVeh.isDrifting && Math.abs(remoteVeh.speed) > 12) {
+          const heading = new THREE.Vector3(Math.sin(remoteVeh.angle), 0, Math.cos(remoteVeh.angle)).normalize();
+          const smokePos = remoteVeh.position.clone().addScaledVector(heading, -1.3);
+          smokePos.y += 0.1;
+          this.particleSystem.spawnTireSmoke(smokePos, heading.clone().multiplyScalar(-remoteVeh.speed * 0.45));
+        }
+
+        if (remoteVeh.isNitroActive) {
+          const heading = new THREE.Vector3(Math.sin(remoteVeh.angle), 0, Math.cos(remoteVeh.angle)).normalize();
+          const flamePos = remoteVeh.position.clone().addScaledVector(heading, -1.6);
+          flamePos.y += 0.25;
+          this.particleSystem.spawnNitroFlame(flamePos, heading.clone().multiplyScalar(-remoteVeh.speed * 0.65 - 3));
+        }
+      });
+
+    } else {
+      // Drive AI Opponents
+      this.aiControllers.forEach((ai) => {
+        if (ai.vehicle.isFinished) {
+          ai.vehicle.update(dt, {
+            accelerate: false,
+            brake: true,
+            steerLeft: false,
+            steerRight: false,
+            nitro: false,
+            drift: false,
+          });
+        } else {
+          ai.update(dt);
+        }
+      });
+    }
+
+    // Drive local human Player
     if (this.raceFinished) {
       this.activeVehicle.update(dt, {
         accelerate: false,
@@ -445,50 +612,34 @@ export class Game {
       this.checkVehicleProgress(vehicle);
     });
 
-    // 1. Dynamic synthesized audio updates
+    // Audio synthesizer updates
     const speedRatio = Math.abs(this.activeVehicle.speed) / this.activeVehicle.config.stats.topSpeed;
     this.audioSystem.updateEngineSound(speedRatio, this.input.keys.accelerate);
     this.audioSystem.setDriftingSound(this.activeVehicle.isDrifting && this.activeVehicle.speed > 10);
     this.audioSystem.setBoostSound(this.activeVehicle.isNitroActive || this.activeVehicle.padBoostTime > 0);
 
-    // Play collision sound on wall boundary hits
     if (this.activeVehicle.hasCollidedThisFrame) {
       this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.7);
       this.audioSystem.playCollisionSound();
       this.activeVehicle.hasCollidedThisFrame = false;
     }
 
-    // 2. Spawn Particle VFX
-    // Drift tire smoke puffs
+    // Local player smoke puffs
     if (this.activeVehicle.isDrifting && Math.abs(this.activeVehicle.speed) > 12) {
-      const headingDir = new THREE.Vector3(
-        Math.sin(this.activeVehicle.angle),
-        0,
-        Math.cos(this.activeVehicle.angle)
-      ).normalize();
-      
-      // Spawn slightly behind the rear wheels
+      const headingDir = new THREE.Vector3(Math.sin(this.activeVehicle.angle), 0, Math.cos(this.activeVehicle.angle)).normalize();
       const smokePos = this.activeVehicle.position.clone().addScaledVector(headingDir, -1.3);
       smokePos.y += 0.1;
-      
       this.particleSystem.spawnTireSmoke(smokePos, headingDir.clone().multiplyScalar(-this.activeVehicle.speed * 0.45));
     }
 
-    // Exhaust nitro flame sparks
+    // Local player nitro flame sparks
     if (this.activeVehicle.isNitroActive) {
-      const headingDir = new THREE.Vector3(
-        Math.sin(this.activeVehicle.angle),
-        0,
-        Math.cos(this.activeVehicle.angle)
-      ).normalize();
-      
+      const headingDir = new THREE.Vector3(Math.sin(this.activeVehicle.angle), 0, Math.cos(this.activeVehicle.angle)).normalize();
       const flamePos = this.activeVehicle.position.clone().addScaledVector(headingDir, -1.6);
       flamePos.y += 0.25;
-
       this.particleSystem.spawnNitroFlame(flamePos, headingDir.clone().multiplyScalar(-this.activeVehicle.speed * 0.65 - 3));
     }
 
-    // 3. Update particle dynamics
     this.particleSystem.update(dt);
 
     if (this.activeVehicle.isNitroActive) {
@@ -528,7 +679,7 @@ export class Game {
           this.raceFinished = true;
           this.showBanner("FINISH!", 10.0);
 
-          // Force unfinished AIs to log final times
+          // Force all unfinished racers to log times
           this.allVehicles.forEach((veh) => {
             if (!veh.isFinished) {
               veh.isFinished = true;
@@ -548,13 +699,25 @@ export class Game {
 
           const standing = sortedEntries.findIndex((e) => e.isPlayer) + 1;
 
-          const coinsEarned = this.stageConfig.rewards.coins[standing] || 50;
-          const xpEarned = this.stageConfig.rewards.xp[standing] || 10;
-          
-          const results = SaveSystem.addRewards(coinsEarned, xpEarned);
+          let coinsEarned = 0;
+          let xpEarned = 0;
+          let levelUp = false;
 
-          if (standing === 1) {
-            SaveSystem.unlockStage(this.stageConfig.id);
+          if (!this.isMultiplayer) {
+            coinsEarned = this.stageConfig.rewards.coins[standing] || 50;
+            xpEarned = this.stageConfig.rewards.xp[standing] || 10;
+            const res = SaveSystem.addRewards(coinsEarned, xpEarned);
+            levelUp = res.levelUp;
+
+            if (standing === 1) {
+              SaveSystem.unlockStage(this.stageConfig.id);
+            }
+          } else {
+            // Multiplayer basic reward payouts
+            coinsEarned = standing === 1 ? 150 : standing === 2 ? 80 : 40;
+            xpEarned = standing === 1 ? 100 : standing === 2 ? 60 : 30;
+            const res = SaveSystem.addRewards(coinsEarned, xpEarned);
+            levelUp = res.levelUp;
           }
 
           setTimeout(() => {
@@ -562,12 +725,10 @@ export class Game {
               standing,
               coins: coinsEarned,
               xp: xpEarned,
-              levelUp: results.levelUp,
+              levelUp,
               standingsList: sortedEntries,
             });
           }, 2500);
-        } else {
-          console.log(`AI Opponent '${vehicle.driverName}' finished at ${this.raceTime.toFixed(2)}s`);
         }
       } else if (vehicle === this.activeVehicle) {
         this.showBanner(`LAP ${vehicle.currentLap}/${this.totalLaps}`, 1.8);
@@ -608,7 +769,7 @@ export class Game {
 
           if (vehicle === this.activeVehicle) {
             this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.6);
-            this.audioSystem.playCollisionSound(); // trigger collision audio thud!
+            this.audioSystem.playCollisionSound();
             this.showBanner("CONE HIT!", 0.8);
           }
         }
@@ -668,7 +829,8 @@ export class Game {
     const suffix = playerStanding === 1 ? "st" : playerStanding === 2 ? "nd" : "3rd";
 
     if (this.posElement) {
-      this.posElement.textContent = `POS: ${playerStanding}${suffix}/3`;
+      const totalDrivers = this.allVehicles.length;
+      this.posElement.textContent = `POS: ${playerStanding}${suffix}/${totalDrivers}`;
     }
 
     const kmh = Math.round(Math.abs(this.activeVehicle.speed) * 3.6);
@@ -708,11 +870,19 @@ export class Game {
 
   public destroy(): void {
     this.stop();
+    
+    // Clean socket event listeners to avoid memory leaks
+    if (this.socket) {
+      this.socket.off(SocketEvent.GAME_STATE);
+      this.socket.off(SocketEvent.ROOM_CLOSED);
+    }
+
     window.removeEventListener("resize", this.onWindowResize.bind(this));
     window.removeEventListener("keydown", this.onKeyDown.bind(this));
     this.track.destroy(this.scene);
-    this.carInstance.destroy(this.scene);
-    this.bikeInstance.destroy(this.scene);
+    this.carInstance?.destroy(this.scene);
+    this.bikeInstance?.destroy(this.scene);
+    this.remotePlayers.forEach((veh) => veh.destroy(this.scene));
     this.aiControllers.forEach((ai) => ai.vehicle.destroy(this.scene));
     this.particleSystem.clear();
     this.renderer.dispose();
