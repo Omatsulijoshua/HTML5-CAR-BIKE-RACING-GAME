@@ -40,6 +40,10 @@ interface PlayerInfo {
     isNitroActive: boolean;
     isDrifting: boolean;
     vehicleId: string;
+    currentLap: number;
+    lastCheckpointIndex: number;
+    isFinished: boolean;
+    finishTime: number;
   };
 }
 
@@ -82,6 +86,10 @@ setInterval(() => {
         isNitroActive: p.state?.isNitroActive ?? false,
         isDrifting: p.state?.isDrifting ?? false,
         vehicleId: p.state?.vehicleId ?? "starter_car",
+        currentLap: p.state?.currentLap ?? 1,
+        lastCheckpointIndex: p.state?.lastCheckpointIndex ?? -1,
+        isFinished: p.state?.isFinished ?? false,
+        finishTime: p.state?.finishTime ?? 0,
       }));
 
       io.to(roomId).emit(SocketEvent.GAME_STATE, { players: states });
@@ -254,6 +262,10 @@ io.on("connection", (socket) => {
       isNitroActive: boolean;
       isDrifting: boolean;
       vehicleId: string;
+      currentLap: number;
+      lastCheckpointIndex: number;
+      isFinished: boolean;
+      finishTime: number;
     }) => {
       const roomId = (data.roomId || "").toUpperCase();
       const room = rooms[roomId];
@@ -270,6 +282,10 @@ io.on("connection", (socket) => {
           isNitroActive: data.isNitroActive,
           isDrifting: data.isDrifting,
           vehicleId: data.vehicleId,
+          currentLap: data.currentLap,
+          lastCheckpointIndex: data.lastCheckpointIndex,
+          isFinished: data.isFinished,
+          finishTime: data.finishTime,
         };
       }
     }

@@ -353,6 +353,12 @@ export class Game {
             remoteVeh.speed = player.speed;
             remoteVeh.isNitroActive = player.isNitroActive;
             remoteVeh.isDrifting = player.isDrifting;
+
+            // Set progress variables
+            remoteVeh.currentLap = player.currentLap;
+            remoteVeh.lastCheckpointIndex = player.lastCheckpointIndex;
+            remoteVeh.isFinished = player.isFinished;
+            remoteVeh.finishTime = player.finishTime;
           }
         }
       });
@@ -537,6 +543,10 @@ export class Game {
           isNitroActive: this.activeVehicle.isNitroActive,
           isDrifting: this.activeVehicle.isDrifting,
           vehicleId: this.activeVehicle.config.id,
+          currentLap: this.activeVehicle.currentLap,
+          lastCheckpointIndex: this.activeVehicle.lastCheckpointIndex,
+          isFinished: this.activeVehicle.isFinished,
+          finishTime: this.activeVehicle.finishTime,
         });
       }
 
