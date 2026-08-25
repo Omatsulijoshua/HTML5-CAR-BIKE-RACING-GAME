@@ -44,6 +44,118 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Expose profile load route
+app.post("/api/profile/load", async (req, res) => {
+  const username = (req.body.username || "Guest Racer").trim();
+
+  if (!isDatabaseConnected) {
+    return res.json({
+      username,
+      coins: 100,
+      xp: 0,
+      level: 1,
+      unlockedVehicles: ["starter_car", "starter_bike"],
+      completedStages: [],
+      bestTimes: {},
+      graphicsQuality: "high",
+      steeringSensitivity: 1.0,
+    });
+  }
+
+  try {
+    let profile = await prisma.userProfile.findUnique({
+      where: { username },
+      include: { bestTimes: true },
+    });
+
+    if (!profile) {
+      profile = await prisma.userProfile.create({
+        data: {
+          username,
+          unlockedVehicles: ["starter_car", "starter_bike"],
+        },
+        include: { bestTimes: true },
+      });
+    }
+
+    // Map bestTimes array to record dictionary stages key map
+    const bestTimesMap: Record<string, number> = {};
+    profile.bestTimes.forEach((bt) => {
+      bestTimesMap[bt.stageId] = bt.time;
+    });
+
+    return res.json({
+      username: profile.username,
+      coins: profile.coins,
+      xp: profile.xp,
+      level: profile.level,
+      unlockedVehicles: profile.unlockedVehicles,
+      completedStages: profile.completedStages,
+      bestTimes: bestTimesMap,
+      graphicsQuality: "high",
+      steeringSensitivity: 1.0,
+    });
+  } catch (error: any) {
+    console.warn(`Failed to query profile for ${username}:`, error.message);
+    return res.status(500).json({ error: "Database error querying profile" });
+  }
+});
+
+// Expose profile save route
+app.post("/api/profile/save", async (req, res) => {
+  const data = req.body;
+  const username = (data.username || "Guest Racer").trim();
+
+  if (!isDatabaseConnected) {
+    return res.json({ success: true, message: "fallback_memory_saved" });
+  }
+
+  try {
+    const profile = await prisma.userProfile.upsert({
+      where: { username },
+      update: {
+        coins: Number(data.coins ?? 100),
+        xp: Number(data.xp ?? 0),
+        level: Number(data.level ?? 1),
+        unlockedVehicles: data.unlockedVehicles ?? ["starter_car", "starter_bike"],
+        completedStages: data.completedStages ?? [],
+      },
+      create: {
+        username,
+        coins: Number(data.coins ?? 100),
+        xp: Number(data.xp ?? 0),
+        level: Number(data.level ?? 1),
+        unlockedVehicles: data.unlockedVehicles ?? ["starter_car", "starter_bike"],
+        completedStages: data.completedStages ?? [],
+      },
+    });
+
+    // Upsert individual stage best times
+    const bestTimes = data.bestTimes || {};
+    for (const [stageId, time] of Object.entries(bestTimes)) {
+      await prisma.bestTime.upsert({
+        where: {
+          profileId_stageId: {
+            profileId: profile.id,
+            stageId: stageId,
+          },
+        },
+        update: { time: Number(time) },
+        create: {
+          profileId: profile.id,
+          stageId: stageId,
+          time: Number(time),
+        },
+      });
+    }
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.warn(`Failed to save profile for ${username}:`, error.message);
+    return res.status(500).json({ error: "Database error saving profile" });
+  }
+});
+
 // Multiplayer Room State Memory
 interface PlayerInfo {
   id: string;

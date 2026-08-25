@@ -301,6 +301,15 @@ createRoomBtn.addEventListener("click", () => {
   socket.emit(SocketEvent.CREATE_ROOM, { username });
 });
 
+if (usernameInput) {
+  usernameInput.addEventListener("change", () => {
+    const username = usernameInput.value.trim() || "Guest Racer";
+    SaveSystem.syncWithDatabase(username).then(() => {
+      refreshMenuDashboard();
+    });
+  });
+}
+
 // 8. Sockets Room Event Receivers
 socket.on(SocketEvent.ROOMS_LIST, (data: { rooms: RoomInfo[] }) => {
   const listContainer = document.getElementById("lobbies-list");
@@ -553,5 +562,8 @@ startBtn.addEventListener("click", () => {
   }
 });
 
-// Initial Dashboard Draw
-refreshMenuDashboard();
+// Initial Dashboard Sync & Draw
+const initProfile = SaveSystem.loadProfile();
+SaveSystem.syncWithDatabase(initProfile.username).then(() => {
+  refreshMenuDashboard();
+});
