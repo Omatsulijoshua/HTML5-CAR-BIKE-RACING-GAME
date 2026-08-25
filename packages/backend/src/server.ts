@@ -191,6 +191,56 @@ app.get("/api/leaderboard/:stageId", async (req, res) => {
   }
 });
 
+// Expose admin panel telemetry metrics route
+app.get("/api/admin/metrics", async (req, res) => {
+  const activeRooms = Object.keys(rooms).length;
+  const activePlayers = Object.values(rooms).reduce((sum, r) => sum + r.players.length, 0);
+  const memoryUsageMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const uptimeSeconds = Math.round(process.uptime());
+
+  let recentMatches: any[] = [];
+  if (isDatabaseConnected) {
+    try {
+      recentMatches = await prisma.matchHistory.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
+    } catch (e: any) {
+      console.warn("Failed to fetch MatchHistory logs for admin panel:", e.message);
+    }
+  } else {
+    // Mock records fallback when SQL database is disconnected
+    recentMatches = [
+      {
+        id: "mock-id-1",
+        roomId: "ROOM9A",
+        hostName: "Apex Driver",
+        winnerName: "Apex Driver",
+        playerCount: 2,
+        durationSeconds: 31.42,
+        createdAt: new Date(),
+      },
+      {
+        id: "mock-id-2",
+        roomId: "ROOM4F",
+        hostName: "Speed Demon",
+        winnerName: "Turbo Racer",
+        playerCount: 2,
+        durationSeconds: 34.88,
+        createdAt: new Date(Date.now() - 600000),
+      },
+    ];
+  }
+
+  return res.json({
+    activeRooms,
+    activePlayers,
+    memoryUsageMB,
+    uptimeSeconds,
+    recentMatches,
+  });
+});
+
 // Multiplayer Room State Memory
 interface PlayerInfo {
   id: string;

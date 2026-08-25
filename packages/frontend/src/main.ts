@@ -620,6 +620,70 @@ closeLeaderboardBtn.addEventListener("click", () => {
   document.getElementById("menu-card")!.style.display = "block";
 });
 
+// 13. Admin Dashboard Helpers
+const adminLink = document.getElementById("menu-admin-link")!;
+const adminCard = document.getElementById("admin-card")!;
+const adminCloseBtn = document.getElementById("admin-close-btn")!;
+let adminPollInterval: any = null;
+
+adminLink.addEventListener("click", () => {
+  document.getElementById("menu-card")!.style.display = "none";
+  adminCard.style.display = "block";
+  pollAdminMetrics();
+  adminPollInterval = setInterval(pollAdminMetrics, 3000);
+});
+
+adminCloseBtn.addEventListener("click", () => {
+  adminCard.style.display = "none";
+  document.getElementById("menu-card")!.style.display = "block";
+  if (adminPollInterval) {
+    clearInterval(adminPollInterval);
+    adminPollInterval = null;
+  }
+});
+
+function pollAdminMetrics(): void {
+  fetch("http://localhost:3001/api/admin/metrics")
+    .then((res) => res.json())
+    .then((data) => {
+      document.getElementById("metric-rooms")!.textContent = data.activeRooms;
+      document.getElementById("metric-racers")!.textContent = data.activePlayers;
+      document.getElementById("metric-uptime")!.textContent = formatUptime(data.uptimeSeconds);
+      document.getElementById("metric-ram")!.textContent = `${data.memoryUsageMB} MB`;
+
+      const rowsContainer = document.getElementById("admin-match-rows")!;
+      rowsContainer.innerHTML = "";
+      if (data.recentMatches.length === 0) {
+        rowsContainer.innerHTML = `<tr><td colspan="5" style="text-align: center; padding: 20px; color: #888;">No match history found.</td></tr>`;
+        return;
+      }
+      data.recentMatches.forEach((m: any) => {
+        const row = document.createElement("tr");
+        row.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+        row.innerHTML = `
+          <td style="padding: 8px 4px; color: #ffcc00; font-weight: bold;">${m.roomId}</td>
+          <td style="padding: 8px 4px;">${m.hostName}</td>
+          <td style="padding: 8px 4px; color: #39ff14;">${m.winnerName}</td>
+          <td style="padding: 8px 4px; text-align: center;">${m.playerCount}</td>
+          <td style="padding: 8px 4px; text-align: right; color: #aaa;">${m.durationSeconds.toFixed(2)}s</td>
+        `;
+        rowsContainer.appendChild(row);
+      });
+    })
+    .catch((err) => {
+      console.warn("Failed to fetch admin telemetry:", err);
+    });
+}
+
+function formatUptime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 // Initial Dashboard Sync & Draw
 const initProfile = SaveSystem.loadProfile();
 SaveSystem.syncWithDatabase(initProfile.username).then(() => {
