@@ -354,6 +354,58 @@ export class Track {
   }
 
   private createEnvironment(): void {
+    // 1. Create a synthwave gradient skydome
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      const grad = ctx.createLinearGradient(0, 0, 0, 128);
+      grad.addColorStop(0, "#040817");   // Zenith (deep cosmic dark)
+      grad.addColorStop(0.5, "#0b1c47"); // Middle
+      grad.addColorStop(1, "#2e1c59");   // Horizon (emissive purple glow)
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1, 128);
+    }
+    
+    const skyTex = new THREE.CanvasTexture(canvas);
+    const skyGeo = new THREE.SphereGeometry(450, 32, 16);
+    const skyMat = new THREE.MeshBasicMaterial({
+      map: skyTex,
+      side: THREE.BackSide,
+      fog: false, // Sky unaffected by track fog
+    });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    this.environmentGroup.add(sky);
+
+    // 2. Create distant low-poly mountain cone boundaries
+    const mountainGeo = new THREE.ConeGeometry(55, 95, 4); // 4-sided pyramid
+    const mountainMat = new THREE.MeshStandardMaterial({
+      color: 0x1d1434,
+      roughness: 0.95,
+      metalness: 0.05,
+      flatShading: true,
+    });
+
+    for (let j = 0; j < 10; j++) {
+      const angle = (j / 10) * Math.PI * 2 + Math.random() * 0.2;
+      const radius = 240 + Math.random() * 50;
+      const mX = Math.cos(angle) * radius;
+      const mZ = Math.sin(angle) * radius;
+
+      const mountain = new THREE.Mesh(mountainGeo, mountainMat);
+      mountain.position.set(mX, -10, mZ);
+      // Vary dimensions
+      const scaleX = 0.8 + Math.random() * 0.6;
+      const scaleY = 0.7 + Math.random() * 0.5;
+      mountain.scale.set(scaleX, scaleY, scaleX);
+      mountain.castShadow = true;
+      mountain.receiveShadow = true;
+      
+      this.environmentGroup.add(mountain);
+    }
+
+    // 3. Create track-side pine trees
     const treeGeo = new THREE.ConeGeometry(2, 6, 8);
     const trunkGeo = new THREE.CylinderGeometry(0.4, 0.4, 2);
     const leafMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 });

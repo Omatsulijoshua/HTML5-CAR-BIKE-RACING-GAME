@@ -6,6 +6,8 @@ import { Car } from "./Car";
 import { Bike } from "./Bike";
 import { AIController } from "./AIController";
 import { SaveSystem } from "./SaveSystem";
+import { AudioSystem } from "./AudioSystem";
+import { ParticleSystem } from "./ParticleSystem";
 import { DEFAULT_VEHICLES, CareerStageConfig } from "@racing-game/shared";
 
 export interface RaceStandingEntry {
@@ -34,6 +36,10 @@ export class Game {
   // AI Opponents
   private aiControllers: AIController[] = [];
   public allVehicles: Vehicle[] = [];
+
+  // Audio and VFX Particle Systems
+  private audioSystem!: AudioSystem;
+  private particleSystem!: ParticleSystem;
 
   // Camera shake state
   private shakeIntensity: number = 0;
@@ -81,22 +87,20 @@ export class Game {
 
     this.initThree();
     this.initSceneObjects();
+    this.initAudioAndVFX();
     this.initHUD();
     this.start();
     this.runStartCountdown();
   }
 
   private initThree(): void {
-    // 1. Load Graphics Quality from SaveSystem settings
     const profile = SaveSystem.loadProfile();
     const isHighDetail = profile.graphicsQuality !== "low";
 
-    // 2. Scene setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0c10);
     this.scene.fog = new THREE.FogExp2(0x0a0c10, 0.015);
 
-    // 3. Camera setup
     this.camera = new THREE.PerspectiveCamera(
       70,
       window.innerWidth / window.innerHeight,
@@ -104,7 +108,6 @@ export class Game {
       1000
     );
 
-    // 4. Renderer setup (dynamically toggles antialiasing and shadows)
     this.renderer = new THREE.WebGLRenderer({ antialias: isHighDetail });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = isHighDetail;
@@ -113,16 +116,10 @@ export class Game {
     this.renderer.toneMappingExposure = 1.0;
     this.container.appendChild(this.renderer.domElement);
 
-    // 5. Clock setup
     this.clock = new THREE.Clock();
-
-    // 6. Input manager
     this.input = new Input();
 
-    // 7. Handle Window Resize
     window.addEventListener("resize", this.onWindowResize.bind(this));
-
-    // 8. Swap Vehicle & Respawn Keyboard Listeners
     window.addEventListener("keydown", this.onKeyDown.bind(this));
   }
 
@@ -146,7 +143,7 @@ export class Game {
     dirLight.shadow.bias = -0.0005;
     this.scene.add(dirLight);
 
-    // 2. Ground scenery
+    // 2. Ground plane
     const groundGeo = new THREE.PlaneGeometry(1000, 1000);
     const groundMat = new THREE.MeshStandardMaterial({
       color: 0x142016,
@@ -162,7 +159,7 @@ export class Game {
     // 3. Track
     this.track = new Track(this.scene);
 
-    // 4. Instantiate Car and Bike vehicles (Player)
+    // 4. Instantiate Car and Bike (Player)
     this.carInstance = new Car(DEFAULT_VEHICLES.starter_car, this.track);
     this.carInstance.driverName = "PLAYER (YOU)";
     this.bikeInstance = new Bike(DEFAULT_VEHICLES.starter_bike, this.track);
@@ -171,7 +168,7 @@ export class Game {
     this.activeVehicle = this.carInstance;
     this.scene.add(this.activeVehicle.mesh);
 
-    // 5. Set Starting Grid positions
+    // 5. Grid start positions
     const startT = 0;
     const startPoint = this.track.curve.getPointAt(startT);
     const tangent = this.track.curve.getTangentAt(startT);
@@ -211,7 +208,6 @@ export class Game {
         }
       }
 
-      // Grid offsets
       const gridOffset = -(5.0 + i * 5.0);
       const laneOffset = i % 2 === 0 ? 2.2 : -2.2;
       const aiPos = startPoint.clone().add(normal.clone().multiplyScalar(laneOffset)).addScaledVector(tangent, gridOffset);
@@ -227,6 +223,25 @@ export class Game {
       // Create AI controller
       this.aiControllers.push(new AIController(aiVehicle, this.track, difficulty));
     }
+  }
+
+  private initAudioAndVFX(): void {
+    // 1. Audio System setup
+    this.audioSystem = new AudioSystem();
+
+    const triggerAudioInit = () => {
+      this.audioSystem.init();
+      this.audioSystem.resume();
+      // Remove listeners once active
+      window.removeEventListener("click", triggerAudioInit);
+      window.removeEventListener("keydown", triggerAudioInit);
+    };
+
+    window.addEventListener("click", triggerAudioInit);
+    window.addEventListener("keydown", triggerAudioInit);
+
+    // 2. Particle System setup
+    this.particleSystem = new ParticleSystem(this.scene);
   }
 
   private initHUD(): void {
@@ -246,30 +261,20 @@ export class Game {
   private runStartCountdown(): void {
     this.raceStarted = false;
 
-    // Create a series of countdown numbers using CSS animated divs
     const spawnNumber = (txt: string) => {
       const el = document.createElement("div");
       el.className = "countdown-number";
       el.textContent = txt;
       document.body.appendChild(el);
       
-      // Remove element when zoom animation ends (1s duration)
       setTimeout(() => {
         el.remove();
       }, 980);
     };
 
-    // Sequence timeouts
-    // 0s: Flashes "3"
     spawnNumber("3");
-
-    // 1s: Flashes "2"
     setTimeout(() => spawnNumber("2"), 1000);
-
-    // 2s: Flashes "1"
     setTimeout(() => spawnNumber("1"), 2000);
-
-    // 3s: Flashes "GO!" and unlocks vehicles throttle inputs
     setTimeout(() => {
       spawnNumber("GO!");
       this.raceStarted = true;
@@ -308,15 +313,13 @@ export class Game {
     targetVehicle.padBoostTime = this.activeVehicle.padBoostTime;
     targetVehicle.nitroFuel = this.activeVehicle.nitroFuel;
 
-    // Swap model meshes
+    // Swap meshes
     this.scene.remove(this.activeVehicle.mesh);
     this.activeVehicle = targetVehicle;
     this.scene.add(this.activeVehicle.mesh);
 
-    // Update standing list index 0
     this.allVehicles[0] = this.activeVehicle;
 
-    // Update position
     this.activeVehicle.mesh.position.copy(targetVehicle.position);
     this.activeVehicle.mesh.rotation.y = targetVehicle.angle;
   }
@@ -372,7 +375,6 @@ export class Game {
   }
 
   private updatePhysics(dt: number): void {
-    // 1. Maintain zero speed for all drivers during starting countdown
     if (!this.raceStarted) {
       this.activeVehicle.speed = 0;
       this.activeVehicle.update(dt, {
@@ -443,10 +445,51 @@ export class Game {
       this.checkVehicleProgress(vehicle);
     });
 
+    // 1. Dynamic synthesized audio updates
+    const speedRatio = Math.abs(this.activeVehicle.speed) / this.activeVehicle.config.stats.topSpeed;
+    this.audioSystem.updateEngineSound(speedRatio, this.input.keys.accelerate);
+    this.audioSystem.setDriftingSound(this.activeVehicle.isDrifting && this.activeVehicle.speed > 10);
+    this.audioSystem.setBoostSound(this.activeVehicle.isNitroActive || this.activeVehicle.padBoostTime > 0);
+
+    // Play collision sound on wall boundary hits
     if (this.activeVehicle.hasCollidedThisFrame) {
       this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.7);
+      this.audioSystem.playCollisionSound();
       this.activeVehicle.hasCollidedThisFrame = false;
     }
+
+    // 2. Spawn Particle VFX
+    // Drift tire smoke puffs
+    if (this.activeVehicle.isDrifting && Math.abs(this.activeVehicle.speed) > 12) {
+      const headingDir = new THREE.Vector3(
+        Math.sin(this.activeVehicle.angle),
+        0,
+        Math.cos(this.activeVehicle.angle)
+      ).normalize();
+      
+      // Spawn slightly behind the rear wheels
+      const smokePos = this.activeVehicle.position.clone().addScaledVector(headingDir, -1.3);
+      smokePos.y += 0.1;
+      
+      this.particleSystem.spawnTireSmoke(smokePos, headingDir.clone().multiplyScalar(-this.activeVehicle.speed * 0.45));
+    }
+
+    // Exhaust nitro flame sparks
+    if (this.activeVehicle.isNitroActive) {
+      const headingDir = new THREE.Vector3(
+        Math.sin(this.activeVehicle.angle),
+        0,
+        Math.cos(this.activeVehicle.angle)
+      ).normalize();
+      
+      const flamePos = this.activeVehicle.position.clone().addScaledVector(headingDir, -1.6);
+      flamePos.y += 0.25;
+
+      this.particleSystem.spawnNitroFlame(flamePos, headingDir.clone().multiplyScalar(-this.activeVehicle.speed * 0.65 - 3));
+    }
+
+    // 3. Update particle dynamics
+    this.particleSystem.update(dt);
 
     if (this.activeVehicle.isNitroActive) {
       this.shakeIntensity = Math.max(this.shakeIntensity, 0.18);
@@ -456,7 +499,6 @@ export class Game {
   private checkVehicleProgress(vehicle: Vehicle): void {
     if (vehicle.isFinished) return;
 
-    // Checkpoints overlap
     const nextIdx = (vehicle.lastCheckpointIndex + 1) % 5;
     const checkpointPos = this.track.checkpoints[nextIdx];
 
@@ -471,7 +513,6 @@ export class Game {
       }
     }
 
-    // Start/Finish Lap check
     const startFinishPos = this.track.curve.getPointAt(0);
     const finishDist = vehicle.position.distanceTo(startFinishPos);
 
@@ -487,16 +528,15 @@ export class Game {
           this.raceFinished = true;
           this.showBanner("FINISH!", 10.0);
 
-          // Force any unfinished AIs to also record their current time
+          // Force unfinished AIs to log final times
           this.allVehicles.forEach((veh) => {
             if (!veh.isFinished) {
               veh.isFinished = true;
-              // estimate final time slightly worse than player
               veh.finishTime = this.raceTime + (5.0 - veh.lastCheckpointIndex * 0.8) + Math.random() * 2.0;
             }
           });
 
-          // Build complete standings array sorted ascending by finishTime
+          // Build standings list
           const sortedEntries: RaceStandingEntry[] = this.allVehicles
             .map((veh) => ({
               name: veh.driverName,
@@ -508,7 +548,6 @@ export class Game {
 
           const standing = sortedEntries.findIndex((e) => e.isPlayer) + 1;
 
-          // Process rewards
           const coinsEarned = this.stageConfig.rewards.coins[standing] || 50;
           const xpEarned = this.stageConfig.rewards.xp[standing] || 10;
           
@@ -518,7 +557,6 @@ export class Game {
             SaveSystem.unlockStage(this.stageConfig.id);
           }
 
-          // Return full list back in callback
           setTimeout(() => {
             this.onCompleteCallback({
               standing,
@@ -570,6 +608,7 @@ export class Game {
 
           if (vehicle === this.activeVehicle) {
             this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.6);
+            this.audioSystem.playCollisionSound(); // trigger collision audio thud!
             this.showBanner("CONE HIT!", 0.8);
           }
         }
@@ -615,7 +654,6 @@ export class Game {
   }
 
   private updateHUD(dt: number): void {
-    // Standings score weights
     const getStandingScore = (veh: Vehicle) => {
       const lapScore = veh.currentLap * 10000;
       const checkpointScore = (veh.lastCheckpointIndex + 1) * 1000;
@@ -633,29 +671,24 @@ export class Game {
       this.posElement.textContent = `POS: ${playerStanding}${suffix}/3`;
     }
 
-    // Speedometer
     const kmh = Math.round(Math.abs(this.activeVehicle.speed) * 3.6);
     if (this.speedElement) {
       this.speedElement.textContent = kmh.toString();
     }
 
-    // Timer
     if (this.timerElement) {
       this.timerElement.textContent = `TIME: ${this.raceTime.toFixed(1)}s`;
     }
 
-    // Lap count
     if (this.lapElement) {
       const displayLap = Math.min(this.activeVehicle.currentLap, this.totalLaps);
       this.lapElement.textContent = `LAP ${displayLap}/${this.totalLaps}`;
     }
 
-    // Nitro fuel progress bar width
     if (this.nitroBarElement) {
       this.nitroBarElement.style.width = `${this.activeVehicle.nitroFuel}%`;
     }
 
-    // Banner visibility
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;
       if (this.bannerTimer <= 0 && this.bannerElement && !this.raceFinished) {
@@ -681,6 +714,7 @@ export class Game {
     this.carInstance.destroy(this.scene);
     this.bikeInstance.destroy(this.scene);
     this.aiControllers.forEach((ai) => ai.vehicle.destroy(this.scene));
+    this.particleSystem.clear();
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);
   }
