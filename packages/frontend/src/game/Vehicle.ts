@@ -65,7 +65,11 @@ export abstract class Vehicle {
     }
   ): void {
     if (this.isNetworkControlled) {
-      this.position.lerp(this.networkTargetPosition, 12 * dt);
+      // Dead Reckoning: Extrapolate target position forward using heading and speed
+      const heading = new THREE.Vector3(Math.sin(this.networkTargetAngle), 0, Math.cos(this.networkTargetAngle)).normalize();
+      const projectedPos = this.networkTargetPosition.clone().addScaledVector(heading, this.speed * dt);
+
+      this.position.lerp(projectedPos, 12 * dt);
       
       let diff = this.networkTargetAngle - this.angle;
       while (diff < -Math.PI) diff += Math.PI * 2;

@@ -612,6 +612,9 @@ export class Game {
       this.checkVehicleProgress(vehicle);
     });
 
+    // Check vehicle-to-vehicle multiplayer collisions
+    this.checkVehiclesCollisions();
+
     // Audio synthesizer updates
     const speedRatio = Math.abs(this.activeVehicle.speed) / this.activeVehicle.config.stats.topSpeed;
     this.audioSystem.updateEngineSound(speedRatio, this.input.keys.accelerate);
@@ -774,6 +777,57 @@ export class Game {
           }
         }
       });
+    });
+  }
+
+  private checkVehiclesCollisions(): void {
+    const player = this.activeVehicle;
+    
+    this.allVehicles.forEach((other) => {
+      if (other === player || other.isFinished) return;
+
+      const dist = player.position.distanceTo(other.position);
+      const collisionRadius = 2.4; // threshold representing vehicle boundaries
+
+      if (dist < collisionRadius) {
+        // 1. Resolve overlap displacement (push player away from the other vehicle)
+        const overlap = collisionRadius - dist;
+        const normal = new THREE.Vector3().subVectors(player.position, other.position);
+        normal.y = 0;
+        normal.normalize();
+
+        // Push player along normal vector
+        player.position.addScaledVector(normal, overlap);
+        player.mesh.position.copy(player.position);
+
+        // 2. Elastic bounce impulse
+        const playerHeading = new THREE.Vector3(Math.sin(player.angle), 0, Math.cos(player.angle)).normalize();
+        const otherHeading = new THREE.Vector3(Math.sin(other.angle), 0, Math.cos(other.angle)).normalize();
+
+        const playerVel = playerHeading.clone().multiplyScalar(player.speed);
+        const otherVel = otherHeading.clone().multiplyScalar(other.speed);
+
+        const relVel = new THREE.Vector3().subVectors(playerVel, otherVel);
+        const speedAlongNormal = relVel.dot(normal);
+
+        // Bounce only if they are approaching each other
+        if (speedAlongNormal < 0) {
+          const restitution = 0.5; // bouncy!
+          const impulseScalar = -(1 + restitution) * speedAlongNormal;
+          const impulseVec = normal.clone().multiplyScalar(impulseScalar);
+
+          playerVel.add(impulseVec);
+          
+          // Steer the velocity vector back to forward speed (with speed reduction)
+          player.speed = playerVel.dot(playerHeading) * 0.85;
+          player.velocity.add(impulseVec);
+
+          // 3. Screen shake & audio impact thuds
+          this.shakeIntensity = Math.min(1.2, this.shakeIntensity + 0.65);
+          this.audioSystem.playCollisionSound();
+          this.showBanner("CONTACT!", 0.8);
+        }
+      }
     });
   }
 
