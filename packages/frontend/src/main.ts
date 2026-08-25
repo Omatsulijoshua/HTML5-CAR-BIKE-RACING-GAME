@@ -221,6 +221,12 @@ function startRace(
 ): void {
   const menuCard = document.getElementById("menu-card");
   if (menuCard) menuCard.style.display = "none";
+
+  const isTouch = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+  const mobileControls = document.getElementById("mobile-controls");
+  if (mobileControls && isTouch) {
+    mobileControls.style.display = "flex";
+  }
   
   console.log(`Starting race: ${stage.name}. Multiplayer? ${!!socketInstance}`);
   
@@ -237,6 +243,10 @@ function startRace(
       
       const hud = document.getElementById("hud");
       if (hud) hud.style.display = "none";
+
+      if (mobileControls) {
+        mobileControls.style.display = "none";
+      }
       
       // Draw detailed standings row table
       const rowsContainer = document.getElementById("results-standings-rows")!;
@@ -683,6 +693,42 @@ function formatUptime(sec: number): string {
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
+
+// Bind touch controls once on startup
+const touchMappings: Record<string, "steerLeft" | "steerRight" | "accelerate" | "brake" | "drift" | "nitro"> = {
+  "btn-left": "steerLeft",
+  "btn-right": "steerRight",
+  "btn-gas": "accelerate",
+  "btn-brake": "brake",
+  "btn-drift": "drift",
+  "btn-nitro": "nitro",
+};
+
+Object.entries(touchMappings).forEach(([btnId, action]) => {
+  const btn = document.getElementById(btnId);
+  if (btn) {
+    btn.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      if (game) {
+        game.input.setTouchInput(action, true);
+      }
+      btn.style.backgroundColor = "rgba(255, 255, 255, 0.4)";
+      btn.style.transform = "scale(0.95)";
+    }, { passive: false });
+
+    const endHandler = (e: TouchEvent) => {
+      e.preventDefault();
+      if (game) {
+        game.input.setTouchInput(action, false);
+      }
+      btn.style.backgroundColor = "";
+      btn.style.transform = "";
+    };
+
+    btn.addEventListener("touchend", endHandler, { passive: false });
+    btn.addEventListener("touchcancel", endHandler, { passive: false });
+  }
+});
 
 // Initial Dashboard Sync & Draw
 const initProfile = SaveSystem.loadProfile();
