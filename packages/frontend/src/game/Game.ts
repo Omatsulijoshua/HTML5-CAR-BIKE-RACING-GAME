@@ -376,6 +376,21 @@ export class Game {
         standingsList: [],
       });
     });
+
+    // Listen to server correction snaps (teleport/desync validation fails)
+    this.socket.on("server:correction", (data: { x: number; y: number; z: number }) => {
+      console.warn(`Server corrected coordinate snap to: [${data.x.toFixed(1)}, ${data.y.toFixed(1)}, ${data.z.toFixed(1)}]`);
+      
+      // Snap active vehicle position and zero out velocity
+      this.activeVehicle.position.set(data.x, data.y, data.z);
+      this.activeVehicle.mesh.position.copy(this.activeVehicle.position);
+      this.activeVehicle.speed = 0;
+      this.activeVehicle.velocity.set(0, 0, 0);
+
+      // Visual camera shake and HUD alert
+      this.shakeIntensity = Math.max(this.shakeIntensity, 0.4);
+      this.showBanner("DESYNC RECONCILED", 1.0);
+    });
   }
 
   public startRaceNow(): void {
@@ -939,6 +954,7 @@ export class Game {
     if (this.socket) {
       this.socket.off(SocketEvent.GAME_STATE);
       this.socket.off(SocketEvent.ROOM_CLOSED);
+      this.socket.off("server:correction");
     }
 
     window.removeEventListener("resize", this.onWindowResize.bind(this));

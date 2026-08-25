@@ -273,6 +273,23 @@ io.on("connection", (socket) => {
 
       const player = room.players.find((p) => p.id === socket.id);
       if (player) {
+        if (player.state) {
+          const dx = data.x - player.state.x;
+          const dz = data.z - player.state.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+
+          // Threshold check: reject coordinate shifts greater than 25m in 33ms
+          if (dist > 25.0 && !data.isFinished && player.state.lastCheckpointIndex === data.lastCheckpointIndex) {
+            console.warn(`Delta spike detected for player ${player.username} (${dist.toFixed(1)}m). Emitting correction.`);
+            socket.emit("server:correction", {
+              x: player.state.x,
+              y: player.state.y,
+              z: player.state.z,
+            });
+            return;
+          }
+        }
+
         player.state = {
           x: data.x,
           y: data.y,
