@@ -171,7 +171,23 @@ function refreshMenuDashboard(): void {
       `;
 
       const btnSide = document.createElement("div");
+      btnSide.style.display = "flex";
+      btnSide.style.gap = "8px";
+      btnSide.style.alignItems = "center";
+
       if (isUnlocked) {
+        // Leaderboard query button
+        const boardBtn = document.createElement("button");
+        boardBtn.textContent = "🏆";
+        boardBtn.style.padding = "8px 12px";
+        boardBtn.style.fontSize = "13px";
+        boardBtn.style.background = "#444";
+        boardBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          showLeaderboard(stage.id, stage.name);
+        });
+        btnSide.appendChild(boardBtn);
+
         const raceBtn = document.createElement("button");
         raceBtn.textContent = "RACE";
         raceBtn.style.padding = "8px 16px";
@@ -560,6 +576,48 @@ startBtn.addEventListener("click", () => {
     console.log(`Host triggered start for room: ${activeRoomId}`);
     socket.emit(SocketEvent.SELECT_TRACK, { roomId: activeRoomId });
   }
+});
+
+// 12. Leaderboard Query Helpers
+const leaderboardPopup = document.getElementById("leaderboard-popup")!;
+const closeLeaderboardBtn = document.getElementById("close-leaderboard-btn")!;
+
+function showLeaderboard(stageId: string, stageName: string): void {
+  document.getElementById("menu-card")!.style.display = "none";
+  leaderboardPopup.style.display = "block";
+  document.getElementById("leaderboard-title")!.textContent = `${stageName} Ranks`;
+
+  const rowsContainer = document.getElementById("leaderboard-rows")!;
+  rowsContainer.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">Loading...</td></tr>`;
+
+  fetch(`http://localhost:3001/api/leaderboard/${stageId}`)
+    .then((res) => res.json())
+    .then((data: { leaderboard: Array<{ username: string; time: number }> }) => {
+      rowsContainer.innerHTML = "";
+      if (data.leaderboard.length === 0) {
+        rowsContainer.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888; font-style: italic;">No records yet! Be the first!</td></tr>`;
+        return;
+      }
+      data.leaderboard.forEach((entry, idx) => {
+        const row = document.createElement("tr");
+        row.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+        row.innerHTML = `
+          <td style="padding: 8px 4px;">${idx + 1}</td>
+          <td style="padding: 8px 4px; font-weight: bold;">${entry.username}</td>
+          <td style="padding: 8px 4px; text-align: right; color: #ffcc00;">${entry.time.toFixed(2)}s</td>
+        `;
+        rowsContainer.appendChild(row);
+      });
+    })
+    .catch((err) => {
+      rowsContainer.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #ff3b30;">Failed to load leaderboard!</td></tr>`;
+      console.warn("Leaderboard API error:", err);
+    });
+}
+
+closeLeaderboardBtn.addEventListener("click", () => {
+  leaderboardPopup.style.display = "none";
+  document.getElementById("menu-card")!.style.display = "block";
 });
 
 // Initial Dashboard Sync & Draw

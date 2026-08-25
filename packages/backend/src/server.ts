@@ -156,6 +156,41 @@ app.post("/api/profile/save", async (req, res) => {
   }
 });
 
+// Expose leaderboard query route
+app.get("/api/leaderboard/:stageId", async (req, res) => {
+  const stageId = req.params.stageId;
+
+  if (!isDatabaseConnected) {
+    // Fallback Mock Leaderboard for offline/development test drives
+    return res.json({
+      leaderboard: [
+        { username: "Apex Driver (AI)", time: 29.82 },
+        { username: "Speed Demon (AI)", time: 31.45 },
+        { username: "Turbo Racer (AI)", time: 33.12 },
+      ],
+    });
+  }
+
+  try {
+    const times = await prisma.bestTime.findMany({
+      where: { stageId },
+      include: { profile: true },
+      orderBy: { time: "asc" },
+      take: 10,
+    });
+
+    const leaderboard = times.map((t) => ({
+      username: t.profile.username,
+      time: t.time,
+    }));
+
+    return res.json({ leaderboard });
+  } catch (error: any) {
+    console.warn(`Failed to query leaderboard for stage ${stageId}:`, error.message);
+    return res.status(500).json({ error: "Database error querying leaderboard" });
+  }
+});
+
 // Multiplayer Room State Memory
 interface PlayerInfo {
   id: string;
