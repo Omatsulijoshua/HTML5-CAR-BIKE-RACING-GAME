@@ -1,0 +1,42 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model UserProfile {
+  id               String     @id @default(uuid())
+  username         String     @unique
+  coins            Int        @default(100)
+  xp               Int        @default(0)
+  level            Int        @default(1)
+  unlockedVehicles String[]   // e.g. ["starter_car", "starter_bike"]
+  completedStages  String[]   // e.g. ["stage_1"]
+  bestTimes        BestTime[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model BestTime {
+  id        String      @id @default(uuid())
+  profileId String
+  profile   UserProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  stageId   String
+  time      Float
+  createdAt DateTime    @default(now())
+
+  @@unique([profileId, stageId])
+}
+
+model MatchHistory {
+  id             String   @id @default(uuid())
+  roomId         String
+  hostName       String
+  winnerName     String
+  playerCount    Int
+  durationSeconds Float
+  createdAt      DateTime @default(now())
+}

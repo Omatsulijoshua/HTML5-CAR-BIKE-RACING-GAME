@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import { SocketEvent } from "@racing-game/shared";
+import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
 
@@ -21,8 +22,26 @@ const io = new Server(httpServer, {
   },
 });
 
+// Initialize Prisma Client
+const prisma = new PrismaClient();
+let isDatabaseConnected = false;
+
+prisma.$connect()
+  .then(() => {
+    isDatabaseConnected = true;
+    console.log("PostgreSQL Database connected successfully via Prisma.");
+  })
+  .catch((err) => {
+    console.warn("Could not connect to PostgreSQL database. Running in Memory fallback mode.");
+    console.error(err.message);
+  });
+
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", message: "Racing Game server is healthy" });
+  res.json({
+    status: "ok",
+    database: isDatabaseConnected ? "connected" : "fallback_mode",
+    message: "Racing Game server is healthy",
+  });
 });
 
 // Multiplayer Room State Memory
@@ -69,12 +88,31 @@ function broadcastLobbyList(): void {
   io.emit(SocketEvent.ROOMS_LIST, { rooms: list });
 }
 
+// Log race finishes to PostgreSQL via Prisma
+async function logMatchFinish(room: RoomData, winnerName: string, duration: number) {
+  if (!isDatabaseConnected) return;
+
+  try {
+    const record = await prisma.matchHistory.create({
+      data: {
+        roomId: room.roomId,
+        hostName: room.hostName,
+        winnerName: winnerName,
+        playerCount: room.players.length,
+        durationSeconds: duration,
+      },
+    });
+    console.log(`[SQL Log] Match History recorded with ID: ${record.id}`);
+  } catch (error) {
+    console.warn("Failed to log match finish record to database:", error);
+  }
+}
+
 // Start 30Hz Server Broadcast Loop
 setInterval(() => {
   for (const roomId of Object.keys(rooms)) {
     const room = rooms[roomId];
     if (room.status === "racing") {
-      // Compile states of all players in the active race
       const states = room.players.map((p) => ({
         id: p.id,
         username: p.username,
@@ -231,14 +269,12 @@ io.on("connection", (socket) => {
     const room = rooms[roomId];
 
     if (room && room.hostId === socket.id && room.status === "lobby") {
-      // Set to countdown phase
       room.status = "countdown";
       broadcastLobbyList();
 
       console.log(`Host ${socket.id} started match for room: ${roomId}`);
       io.to(roomId).emit(SocketEvent.RACE_STARTING, { players: room.players });
 
-      // Count down on server: 3 seconds to release inputs
       setTimeout(() => {
         if (rooms[roomId]) {
           rooms[roomId].status = "racing";
@@ -269,16 +305,16 @@ io.on("connection", (socket) => {
     }) => {
       const roomId = (data.roomId || "").toUpperCase();
       const room = rooms[roomId];
-      if (!room || room.status !== "racing") return;
+      if (!room || (room.status !== "racing" && room.status !== "countdown")) return;
 
       const player = room.players.find((p) => p.id === socket.id);
       if (player) {
+        // Delta velocity verification checks
         if (player.state) {
           const dx = data.x - player.state.x;
           const dz = data.z - player.state.z;
           const dist = Math.sqrt(dx * dx + dz * dz);
 
-          // Threshold check: reject coordinate shifts greater than 25m in 33ms
           if (dist > 25.0 && !data.isFinished && player.state.lastCheckpointIndex === data.lastCheckpointIndex) {
             console.warn(`Delta spike detected for player ${player.username} (${dist.toFixed(1)}m). Emitting correction.`);
             socket.emit("server:correction", {
@@ -304,6 +340,13 @@ io.on("connection", (socket) => {
           isFinished: data.isFinished,
           finishTime: data.finishTime,
         };
+
+        // When a player finishes, log the match once on the database
+        if (data.isFinished && room.status === "racing") {
+          room.status = "finished";
+          logMatchFinish(room, player.username, data.finishTime);
+          broadcastLobbyList();
+        }
       }
     }
   );
