@@ -5,12 +5,17 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { SocketEvent } from "@racing-game/shared";
 import { PrismaClient } from "@prisma/client";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3001;
 
@@ -596,6 +601,16 @@ io.on("connection", (socket) => {
     }
   }
 });
+
+// In production, serve the built frontend assets statically
+if (process.env.NODE_ENV === "production") {
+  const frontendDist = path.join(__dirname, "../../frontend/dist");
+  app.use(express.static(frontendDist));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(frontendDist, "index.html"));
+  });
+  console.log(`[Prod] Serving static frontend assets from: ${frontendDist}`);
+}
 
 httpServer.listen(PORT, () => {
   console.log(`Racing Game backend server running on http://localhost:${PORT}`);

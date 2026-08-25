@@ -11,6 +11,7 @@ export interface UserProfileData {
 }
 
 const SAVE_KEY = "racing_game_save";
+const BACKEND_URL = window.location.origin.includes("localhost:3000") ? "http://localhost:3001" : window.location.origin;
 
 export class SaveSystem {
   public static loadProfile(): UserProfileData {
@@ -49,7 +50,7 @@ export class SaveSystem {
     this.saveProfileLocal(profile);
 
     // Sync save to server database in background
-    fetch("http://localhost:3001/api/profile/save", {
+    fetch(`${BACKEND_URL}/api/profile/save`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(profile),
@@ -68,7 +69,7 @@ export class SaveSystem {
 
   public static async syncWithDatabase(username: string): Promise<UserProfileData> {
     try {
-      const res = await fetch("http://localhost:3001/api/profile/load", {
+      const res = await fetch(`${BACKEND_URL}/api/profile/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username }),

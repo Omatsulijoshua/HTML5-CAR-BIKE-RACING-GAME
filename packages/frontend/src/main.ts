@@ -5,8 +5,9 @@ import { CAREER_STAGES, CareerStageConfig, SocketEvent, RoomInfo } from "@racing
 
 console.log("Bootstrapping Racing Game...");
 
-// 1. Initialize Socket.IO Client
-const socket: Socket = io("http://localhost:3001", {
+// 1. Initialize Socket.IO Client dynamically
+const SERVER_URL = window.location.origin.includes("localhost:3000") ? "http://localhost:3001" : window.location.origin;
+const socket: Socket = io(SERVER_URL, {
   autoConnect: true,
   reconnectionAttempts: 5,
 });
@@ -600,7 +601,7 @@ function showLeaderboard(stageId: string, stageName: string): void {
   const rowsContainer = document.getElementById("leaderboard-rows")!;
   rowsContainer.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">Loading...</td></tr>`;
 
-  fetch(`http://localhost:3001/api/leaderboard/${stageId}`)
+  fetch(`${SERVER_URL}/api/leaderboard/${stageId}`)
     .then((res) => res.json())
     .then((data: { leaderboard: Array<{ username: string; time: number }> }) => {
       rowsContainer.innerHTML = "";
@@ -653,7 +654,7 @@ adminCloseBtn.addEventListener("click", () => {
 });
 
 function pollAdminMetrics(): void {
-  fetch("http://localhost:3001/api/admin/metrics")
+  fetch(`${SERVER_URL}/api/admin/metrics`)
     .then((res) => res.json())
     .then((data) => {
       document.getElementById("metric-rooms")!.textContent = data.activeRooms;
