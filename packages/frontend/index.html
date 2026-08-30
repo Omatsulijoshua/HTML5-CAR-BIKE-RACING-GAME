@@ -141,6 +141,35 @@
             background: rgba(0, 122, 255, 0.3);
             border-color: rgba(0, 122, 255, 0.6);
         }
+        @media (max-width: 768px) {
+            #hud-bottom-right {
+                bottom: auto !important;
+                top: 75px !important;
+                right: 25px !important;
+                align-items: flex-end !important;
+            }
+            .touch-btn {
+                width: 58px !important;
+                height: 58px !important;
+                font-size: 10px !important;
+            }
+            #mobile-controls {
+                bottom: 15px !important;
+                padding: 0 15px !important;
+            }
+            .card h1 {
+                font-size: 20px !important;
+            }
+            .card {
+                padding: 15px !important;
+                width: 95% !important;
+                max-height: 90vh;
+                overflow-y: auto;
+            }
+            #dashboard-bar {
+                padding: 10px 15px !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -392,7 +421,7 @@
         </div>
 
         <!-- Bottom Row (Speed and Nitro status) -->
-        <div style="position: absolute; bottom: 25px; right: 25px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+        <div id="hud-bottom-right" style="position: absolute; bottom: 25px; right: 25px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
             <div style="display: flex; align-items: baseline; gap: 5px;">
                 <div id="hud-speed" style="font-size: 44px; color: #ffffff;">0</div>
                 <div style="font-size: 16px; color: #888;">KM/H</div>
