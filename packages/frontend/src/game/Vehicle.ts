@@ -46,6 +46,7 @@ export abstract class Vehicle {
     const startPoint = this.track.curve.getPointAt(0);
     const tangent = this.track.curve.getTangentAt(0);
     this.position.copy(startPoint);
+    this.position.y += 0.1;
     this.mesh.position.copy(this.position);
     this.angle = Math.atan2(tangent.x, tangent.z);
     this.mesh.rotation.y = this.angle;
@@ -169,7 +170,7 @@ export abstract class Vehicle {
     // 6. Handle Track Elevation Snap (gravity)
     const closestT = this.findClosestTrackT(this.position);
     const trackPoint = this.track.curve.getPointAt(closestT);
-    this.position.y = trackPoint.y;
+    this.position.y = trackPoint.y + 0.1;
 
     // 7. Handle Boundaries / Curbs Collision
     this.checkTrackBoundaries(trackPoint);
